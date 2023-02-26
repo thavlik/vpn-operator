@@ -1,0 +1,8 @@
+apiVersion: v2
+description: youtube-dl operator
+name: ytdl-operator
+version: 0.0.0
+maintainers:
+  - name: Tom Havlik
+    email: thavlik@protonmail.com
+    url: https://github.com/thavlik

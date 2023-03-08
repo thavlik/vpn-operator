@@ -42,6 +42,7 @@ pub async fn unassign_provider(
     Ok(())
 }
 
+/// Lists all Provider resources, cluster-wide.
 async fn list_providers(client: Client) -> Result<Vec<Provider>, Error> {
     let api: Api<Provider> = Api::all(client);
     let providers = api.list(&Default::default()).await?;
@@ -90,7 +91,6 @@ async fn assign_provider_base(
                     id,
                     secret,
                 });
-                status.phase = Some(MaskPhase::Active);
             })
             .await?;
 
@@ -103,6 +103,7 @@ async fn assign_provider_base(
     Ok(false)
 }
 
+/// Assigns a new Provider to the Mask. Prunes and retries if necessary.
 pub async fn assign_provider(
     client: Client,
     name: &str,

@@ -8,11 +8,9 @@ use kube::{
 };
 use tokio::time::Duration;
 
-use crate::crd::Echo;
+use crate::crd::{Provider, Mask};
 
 pub mod crd;
-mod echo;
-mod finalizer;
 
 #[tokio::main]
 async fn main() {
@@ -23,21 +21,21 @@ async fn main() {
         .expect("Expected a valid KUBECONFIG environment variable.");
 
     // Preparation of resources used by the `kube_runtime::Controller`
-    let crd_api: Api<Echo> = Api::all(kubernetes_client.clone());
+    let crd_api: Api<Mask> = Api::all(kubernetes_client.clone());
     let context: Arc<ContextData> = Arc::new(ContextData::new(kubernetes_client.clone()));
 
     // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
     // It requires the following information:
-    // - `kube::Api<T>` this controller "owns". In this case, `T = Echo`, as this controller owns the `Echo` resource,
-    // - `kube::api::ListParams` to select the `Echo` resources with. Can be used for Echo filtering `Echo` resources before reconciliation,
-    // - `reconcile` function with reconciliation logic to be called each time a resource of `Echo` kind is created/updated/deleted,
+    // - `kube::Api<T>` this controller "owns". In this case, `T = Mask`, as this controller owns the `Mask` resource,
+    // - `kube::api::ListParams` to select the `Mask` resources with. Can be used for Mask filtering `Mask` resources before reconciliation,
+    // - `reconcile` function with reconciliation logic to be called each time a resource of `Mask` kind is created/updated/deleted,
     // - `on_error` function to call whenever reconciliation fails.
     Controller::new(crd_api.clone(), ListParams::default())
         .run(reconcile, on_error, context)
         .for_each(|reconciliation_result| async move {
             match reconciliation_result {
-                Ok(echo_resource) => {
-                    println!("Reconciliation successful. Resource: {:?}", echo_resource);
+                Ok(mask_resource) => {
+                    println!("Reconciliation successful. Resource: {:?}", mask_resource);
                 }
                 Err(reconciliation_err) => {
                     eprintln!("Reconciliation error: {:?}", reconciliation_err)
@@ -64,27 +62,28 @@ impl ContextData {
     }
 }
 
-/// Action to be taken upon an `Echo` resource during reconciliation
-enum EchoAction {
-    /// Create the subresources, this includes spawning `n` pods with Echo service
+/// Action to be taken upon an `Mask` resource during reconciliation
+enum MaskAction {
+    /// Create the subresources, this includes spawning `n` pods with Mask service
     Create,
     /// Delete all subresources created in the `Create` phase
     Delete,
-    /// This `Echo` resource is in desired state and requires no actions to be taken
+    /// This `Mask` resource is in desired state and requires no actions to be taken
     NoOp,
 }
 
-async fn reconcile(echo: Arc<Echo>, context: Arc<ContextData>) -> Result<Action, Error> {
-    let client: Client = context.client.clone(); // The `Client` is shared -> a clone from the reference is obtained
+async fn reconcile(mask: Arc<Mask>, context: Arc<ContextData>) -> Result<Action, Error> {
+    // The `Client` is shared -> a clone from the reference is obtained
+    let client: Client = context.client.clone();
 
-    // The resource of `Echo` kind is required to have a namespace set. However, it is not guaranteed
+    // The resource of `Mask` kind is required to have a namespace set. However, it is not guaranteed
     // the resource will have a `namespace` set. Therefore, the `namespace` field on object's metadata
     // is optional and Rust forces the programmer to check for it's existence first.
-    let namespace: String = match echo.namespace() {
+    let namespace: String = match mask.namespace() {
         None => {
             // If there is no namespace to deploy to defined, reconciliation ends with an error immediately.
             return Err(Error::UserInputError(
-                "Expected Echo resource to be namespaced. Can't deploy to an unknown namespace."
+                "Expected Mask resource to be namespaced. Can't deploy to an unknown namespace."
                     .to_owned(),
             ));
         }
@@ -92,61 +91,41 @@ async fn reconcile(echo: Arc<Echo>, context: Arc<ContextData>) -> Result<Action,
         // the namespace could be checked for existence first.
         Some(namespace) => namespace,
     };
-    let name = echo.name_any(); // Name of the Echo resource is used to name the subresources as well.
+
+    // Name of the Mask resource is used to name the subresources as well.
+    let name = mask.name_any();
 
     // Performs action as decided by the `determine_action` function.
-    return match determine_action(&echo) {
-        EchoAction::Create => {
-            // Creates a deployment with `n` Echo service pods, but applies a finalizer first.
-            // Finalizer is applied first, as the operator might be shut down and restarted
-            // at any time, leaving subresources in intermediate state. This prevents leaks on
-            // the `Echo` resource deletion.
-
-            // Apply the finalizer first. If that fails, the `?` operator invokes automatic conversion
-            // of `kube::Error` to the `Error` defined in this crate.
-            finalizer::add(client.clone(), &name, &namespace).await?;
-            // Invoke creation of a Kubernetes built-in resource named deployment with `n` echo service pods.
-            echo::deploy(client, &name, echo.spec.replicas, &namespace).await?;
+    match determine_action(&mask) {
+        MaskAction::Create => {
             Ok(Action::requeue(Duration::from_secs(10)))
         }
-        EchoAction::Delete => {
-            // Deletes any subresources related to this `Echo` resources. If and only if all subresources
-            // are deleted, the finalizer is removed and Kubernetes is free to remove the `Echo` resource.
-
-            //First, delete the deployment. If there is any error deleting the deployment, it is
-            // automatically converted into `Error` defined in this crate and the reconciliation is ended
-            // with that error.
-            // Note: A more advanced implementation would check for the Deployment's existence.
-            echo::delete(client.clone(), &name, &namespace).await?;
-
-            // Once the deployment is successfully removed, remove the finalizer to make it possible
-            // for Kubernetes to delete the `Echo` resource.
-            finalizer::delete(client, &name, &namespace).await?;
+        MaskAction::Delete => {
             Ok(Action::await_change()) // Makes no sense to delete after a successful delete, as the resource is gone
         }
         // The resource is already in desired state, do nothing and re-check after 10 seconds
-        EchoAction::NoOp => Ok(Action::requeue(Duration::from_secs(10))),
-    };
+        MaskAction::NoOp => Ok(Action::requeue(Duration::from_secs(10))),
+    }
 }
 
 /// Resources arrives into reconciliation queue in a certain state. This function looks at
-/// the state of given `Echo` resource and decides which actions needs to be performed.
-/// The finite set of possible actions is represented by the `EchoAction` enum.
+/// the state of given `Mask` resource and decides which actions needs to be performed.
+/// The finite set of possible actions is represented by the `MaskAction` enum.
 ///
 /// # Arguments
-/// - `echo`: A reference to `Echo` being reconciled to decide next action upon.
-fn determine_action(echo: &Echo) -> EchoAction {
-    return if echo.meta().deletion_timestamp.is_some() {
-        EchoAction::Delete
-    } else if echo
+/// - `mask`: A reference to `Mask` being reconciled to decide next action upon.
+fn determine_action(mask: &Mask) -> MaskAction {
+    return if mask.meta().deletion_timestamp.is_some() {
+        MaskAction::Delete
+    } else if mask
         .meta()
         .finalizers
         .as_ref()
         .map_or(true, |finalizers| finalizers.is_empty())
     {
-        EchoAction::Create
+        MaskAction::Create
     } else {
-        EchoAction::NoOp
+        MaskAction::NoOp
     };
 }
 
@@ -155,11 +134,11 @@ fn determine_action(echo: &Echo) -> EchoAction {
 /// five seconds.
 ///
 /// # Arguments
-/// - `echo`: The erroneous resource.
+/// - `mask`: The erroneous resource.
 /// - `error`: A reference to the `kube::Error` that occurred during reconciliation.
 /// - `_context`: Unused argument. Context Data "injected" automatically by kube-rs.
-fn on_error(echo: Arc<Echo>, error: &Error, _context: Arc<ContextData>) -> Action {
-    eprintln!("Reconciliation error:\n{:?}.\n{:?}", error, echo);
+fn on_error(mask: Arc<Mask>, error: &Error, _context: Arc<ContextData>) -> Action {
+    eprintln!("Reconciliation error:\n{:?}.\n{:?}", error, mask);
     Action::requeue(Duration::from_secs(5))
 }
 
@@ -172,7 +151,7 @@ pub enum Error {
         #[from]
         source: kube::Error,
     },
-    /// Error in user input or Echo resource definition, typically missing fields.
-    #[error("Invalid Echo CRD: {0}")]
+    /// Error in user input or Mask resource definition, typically missing fields.
+    #[error("Invalid Mask CRD: {0}")]
     UserInputError(String),
 }

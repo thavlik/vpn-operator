@@ -10,16 +10,16 @@ RUN apt-get update \
         wget \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /
-RUN cargo new ytdl-operator
-WORKDIR /ytdl-operator
-COPY Cargo.toml .
-COPY Cargo.lock .
+RUN cargo new vpn-operator
+WORKDIR /vpn-operator
+COPY Cargo.toml Cargo.lock ./
 RUN cargo build \
     && rm src/*.rs \
-    && rm ./target/debug/ytdl-operator*
-COPY src ./src
-RUN cargo build
+    && rm ./target/debug/vpn-operator*
+COPY src src
+RUN touch -a -m src/main.rs \
+    && cargo build
 FROM debian:bullseye-slim
 WORKDIR /
-COPY --from=builder /ytdl-operator/target/debug/ytdl-operator .
-CMD ["/ytdl-operator"]
+COPY --from=builder /vpn-operator/target/debug/vpn-operator .
+CMD ["/vpn-operator"]

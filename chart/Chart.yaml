@@ -1,6 +1,6 @@
 apiVersion: v2
-description: youtube-dl operator
-name: ytdl-operator
+description: Virtual Private Network operator
+name: vpn-operator
 version: 0.0.0
 maintainers:
   - name: Tom Havlik

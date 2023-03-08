@@ -1,4 +1,4 @@
-image: thavlik/ytdl-operator:latest
+image: thavlik/vpn-operator:latest
 imagePullPolicy: Always
 resources:
   limits:

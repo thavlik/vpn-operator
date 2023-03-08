@@ -1,5 +1,5 @@
 [package]
-name = "ytdl-operator"
+name = "vpn-operator"
 version = "0.1.0"
 authors = ["Tom Havlik (thavlik@protonmail.com)"]
 edition = "2018"

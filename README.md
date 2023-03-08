@@ -1,2 +1,2 @@
-# ytdl-operator
-Kubernetes operator for youtube-dl written in pure rust. 
+# vpn-operator
+Kubernetes operator for VPN sidecars written in pure rust. 

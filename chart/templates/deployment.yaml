@@ -21,7 +21,7 @@ spec:
       containers:
         - name: operator
           command:
-            - /ytdl-operator
+            - /vpn-operator
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           image: {{ .Values.image }}
           resources:

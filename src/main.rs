@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use futures::stream::StreamExt;
+use k8s_openapi::api::core::v1::Secret;
 use kube::Resource;
 use kube::ResourceExt;
 use kube::{
@@ -8,9 +9,14 @@ use kube::{
 };
 use tokio::time::Duration;
 
-use crate::crd::{Provider, Mask};
+use crate::crd::{AssignedProvider, Mask, MaskPhase};
 
 pub mod crd;
+
+mod actions;
+mod finalizer;
+
+use actions::{owns_reservation};
 
 #[tokio::main]
 async fn main() {
@@ -63,23 +69,35 @@ impl ContextData {
 }
 
 /// Action to be taken upon an `Mask` resource during reconciliation
+#[derive(Debug, PartialEq)]
 enum MaskAction {
-    /// Create the subresources, this includes spawning `n` pods with Mask service
-    Create,
-    /// Delete all subresources created in the `Create` phase
+    /// Assign the Mask a provider.
+    Assign,
+    /// Delete all subresources.
     Delete,
+    /// Create the credentials secret for the Mask.
+    CreateSecret,
+    ///
+    SetActive,
     /// This `Mask` resource is in desired state and requires no actions to be taken
     NoOp,
 }
 
-async fn reconcile(mask: Arc<Mask>, context: Arc<ContextData>) -> Result<Action, Error> {
+fn get_assigned_provider(instance: &Mask) -> Option<&AssignedProvider> {
+    match instance.status {
+        None => None,
+        Some(ref status) => status.provider.as_ref(),
+    }
+}
+
+async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Action, Error> {
     // The `Client` is shared -> a clone from the reference is obtained
     let client: Client = context.client.clone();
 
     // The resource of `Mask` kind is required to have a namespace set. However, it is not guaranteed
     // the resource will have a `namespace` set. Therefore, the `namespace` field on object's metadata
     // is optional and Rust forces the programmer to check for it's existence first.
-    let namespace: String = match mask.namespace() {
+    let namespace: String = match instance.namespace() {
         None => {
             // If there is no namespace to deploy to defined, reconciliation ends with an error immediately.
             return Err(Error::UserInputError(
@@ -93,18 +111,133 @@ async fn reconcile(mask: Arc<Mask>, context: Arc<ContextData>) -> Result<Action,
     };
 
     // Name of the Mask resource is used to name the subresources as well.
-    let name = mask.name_any();
+    let name = instance.name_any();
+
+    let action = determine_action(client.clone(), &name, &namespace, &instance).await?;
+
+    if action != MaskAction::NoOp {
+        println!("{}/{} ACTION: {:?}", namespace, name, action);
+    }
 
     // Performs action as decided by the `determine_action` function.
-    match determine_action(&mask) {
-        MaskAction::Create => {
-            Ok(Action::requeue(Duration::from_secs(10)))
+    match action {
+        MaskAction::Assign => {
+            // Remove any current provider from the Mask's status object.
+            // Note: this will not delete the reservation ConfigMap.
+            actions::unassign_provider(client.clone(), &name, &namespace, &instance).await?;
+
+            // Add a finalizer so that the Mask resource is not deleted before
+            // the reservation ConfigMap and credentials secret are deleted.
+            let instance = finalizer::add(client.clone(), &name, &namespace).await?;
+
+            // Assign a new provider to the Mask.
+            if !actions::assign_provider(client.clone(), &name, &namespace, &instance).await? {
+                // Failed to assign a provider. Wait a bit and retry.
+                return Ok(Action::requeue(Duration::from_secs(1)));
+            }
+
+            // Requeue immediately to set the phase to "Active".
+            Ok(Action::requeue(Duration::ZERO))
         }
         MaskAction::Delete => {
-            Ok(Action::await_change()) // Makes no sense to delete after a successful delete, as the resource is gone
+            // Delete the reservation ConfigMap from the Provider's namespace.
+            actions::delete_reservation(client.clone(), &name, &namespace, &instance).await?;
+
+            // Delete the credentials secret from the Mask's namespace.
+            actions::delete_secret(client.clone(), &namespace, &instance).await?;
+
+            // Remove the finalizer, which will allow the Mask resource to be deleted.
+            finalizer::delete(client, &name, &namespace).await?;
+
+            // Makes no sense to requeue after deleting, as the resource is gone.
+            Ok(Action::await_change())
+        }
+        MaskAction::SetActive => {
+            // Update the phase to Active.
+            actions::set_active(client.clone(), &name, &namespace, &instance).await?;
+
+            // Resource is fully reconciled. Requeue after a short delay.
+            Ok(Action::requeue(Duration::from_secs(10)))
+        }
+        MaskAction::CreateSecret => {
+            // Create the credentials env secret in the Mask's namespace.
+            actions::create_secret(client.clone(), &name, &namespace, &instance).await?;
+
+            // Requeue immediately to set the phase to Active.
+            Ok(Action::requeue(Duration::ZERO))
         }
         // The resource is already in desired state, do nothing and re-check after 10 seconds
         MaskAction::NoOp => Ok(Action::requeue(Duration::from_secs(10))),
+    }
+}
+
+/// Returns the phase of the Mask.
+pub fn get_mask_phase(instance: &Mask) -> Result<MaskPhase, Error> {
+    Ok(instance
+        .status
+        .as_ref()
+        .ok_or_else(|| Error::UserInputError("No status".to_string()))?
+        .phase
+        .ok_or_else(|| Error::UserInputError("No phase".to_string()))?)
+}
+
+/// Gets the secret that contains the credentials for the Mask.
+async fn get_secret(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    provider: &AssignedProvider,
+) -> Result<Option<Secret>, Error> {
+    let api: Api<Secret> = Api::namespaced(client, namespace);
+    let name = format!("{}-{}", name, &provider.name);
+    match api.get(&name).await {
+        Ok(pod) => Ok(Some(pod)),
+        Err(e) => match &e {
+            kube::Error::Api(ae) => match ae.code {
+                // If the resource does not exist, return None
+                404 => Ok(None),
+                // If the resource exists but we can't access it, return an error
+                _ => Err(e.into()),
+            },
+            _ => Err(e.into()),
+        },
+    }
+}
+
+/// Determines the action given that the provider has been assigned.
+async fn determine_provider_action(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    instance: &Mask,
+    provider: &AssignedProvider,
+) -> Result<MaskAction, Error> {
+    // Ensure that the ConfigMap reserving the connection with the Provider exists.
+    // If the ConfigMap no longer exists, we need to immediately remove the
+    // existing provider from the Mask status and assign a new one.
+    if !owns_reservation(client.clone(), name, namespace, instance).await? {
+        // Reassign the provider. For whatever reason, the ConfigMap
+        // reserving the connection with the Provider no longer exists.
+        return Ok(MaskAction::Assign);
+    }
+
+    // Ensure the Secret containing the env credentials exists.
+    if get_secret(client, name, namespace, provider)
+        .await?
+        .is_none()
+    {
+        // The Mask has reserved a connection with the Provider,
+        // but for some reason the secret doesn't exist.
+        return Ok(MaskAction::CreateSecret);
+    }
+
+    match get_mask_phase(instance)? {
+        // Both the ConfigMap reserving the connection and the secret
+        // containing the env credentials exist, so the Mask is in
+        // the desired state.
+        MaskPhase::Active => Ok(MaskAction::NoOp),
+        // Set the phase to Active now that everything is reconciled.
+        _ => Ok(MaskAction::SetActive),
     }
 }
 
@@ -114,19 +247,25 @@ async fn reconcile(mask: Arc<Mask>, context: Arc<ContextData>) -> Result<Action,
 ///
 /// # Arguments
 /// - `mask`: A reference to `Mask` being reconciled to decide next action upon.
-fn determine_action(mask: &Mask) -> MaskAction {
-    return if mask.meta().deletion_timestamp.is_some() {
-        MaskAction::Delete
-    } else if mask
-        .meta()
-        .finalizers
-        .as_ref()
-        .map_or(true, |finalizers| finalizers.is_empty())
-    {
-        MaskAction::Create
-    } else {
-        MaskAction::NoOp
+async fn determine_action(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    instance: &Mask,
+) -> Result<MaskAction, Error> {
+    if instance.meta().deletion_timestamp.is_some() {
+        return Ok(MaskAction::Delete);
+    }
+
+    // Get the assigned provider details from the status.
+    let provider = match get_assigned_provider(instance) {
+        // Provider has not been assigned yet.
+        None => return Ok(MaskAction::Assign),
+        // Provider has already been assigned.
+        Some(provider) => provider,
     };
+
+    determine_provider_action(client, name, namespace, instance, provider).await
 }
 
 /// Actions to be taken when a reconciliation fails - for whatever reason.
@@ -134,11 +273,11 @@ fn determine_action(mask: &Mask) -> MaskAction {
 /// five seconds.
 ///
 /// # Arguments
-/// - `mask`: The erroneous resource.
+/// - `instance`: The erroneous resource.
 /// - `error`: A reference to the `kube::Error` that occurred during reconciliation.
 /// - `_context`: Unused argument. Context Data "injected" automatically by kube-rs.
-fn on_error(mask: Arc<Mask>, error: &Error, _context: Arc<ContextData>) -> Action {
-    eprintln!("Reconciliation error:\n{:?}.\n{:?}", error, mask);
+fn on_error(instance: Arc<Mask>, error: &Error, _context: Arc<ContextData>) -> Action {
+    eprintln!("Reconciliation error:\n{:?}.\n{:?}", error, instance);
     Action::requeue(Duration::from_secs(5))
 }
 
@@ -154,4 +293,7 @@ pub enum Error {
     /// Error in user input or Mask resource definition, typically missing fields.
     #[error("Invalid Mask CRD: {0}")]
     UserInputError(String),
+    /// Invalid value in the status.phase field.
+    #[error("Invalid Mask phase: {0}")]
+    InvalidPhase(String),
 }

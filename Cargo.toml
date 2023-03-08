@@ -22,3 +22,4 @@ serde = "1"
 serde_json = "1.0"
 schemars = "0.8"
 thiserror = "1"    # Custom Error definitions and convenient error mappings
+chrono = "0.4.23"

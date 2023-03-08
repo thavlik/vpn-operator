@@ -16,7 +16,7 @@ pub mod crd;
 mod actions;
 mod finalizer;
 
-use actions::{owns_reservation};
+use actions::owns_reservation;
 
 #[tokio::main]
 async fn main() {

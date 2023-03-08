@@ -12,7 +12,8 @@ RUN apt-get update \
 WORKDIR /
 RUN cargo new vpn-operator
 WORKDIR /vpn-operator
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml .
+COPY Cargo.lock .
 RUN cargo build \
     && rm src/*.rs \
     && rm ./target/debug/vpn-operator*

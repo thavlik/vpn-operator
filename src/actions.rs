@@ -68,10 +68,12 @@ async fn assign_provider_base(
                 client.clone(),
                 name,
                 namespace,
-                instance,
+                provider,
                 &reservation_name,
                 &provider_namespace,
-            ).await {
+            )
+            .await
+            {
                 // Slot reserved.
                 Ok(_) => {}
                 // Slot is already reserved.
@@ -79,7 +81,7 @@ async fn assign_provider_base(
                 // Unknown failure reserving slot.
                 Err(e) => return Err(e),
             }
-            
+
             // Patch the Mask resource to add the provider.
             patch_status(client.clone(), name, namespace, instance, move |status| {
                 let secret = format!("{}-{}", name, &provider_name);
@@ -151,7 +153,9 @@ async fn prune(client: Client) -> Result<bool, Error> {
                 Some(data) => data,
                 // Malformed reservation is dangling, so delete it.
                 None => {
-                    cm_api.delete(&reservation_name, &DeleteParams::default()).await?;
+                    cm_api
+                        .delete(&reservation_name, &DeleteParams::default())
+                        .await?;
                     deleted = true;
                     continue;
                 }
@@ -161,7 +165,9 @@ async fn prune(client: Client) -> Result<bool, Error> {
                 (Some(name), Some(namespace)) => (name, namespace),
                 // Malformed reservation is dangling, so delete it.
                 _ => {
-                    cm_api.delete(&reservation_name, &DeleteParams::default()).await?;
+                    cm_api
+                        .delete(&reservation_name, &DeleteParams::default())
+                        .await?;
                     deleted = true;
                     continue;
                 }
@@ -172,7 +178,9 @@ async fn prune(client: Client) -> Result<bool, Error> {
                 Ok(_) => continue,
                 // Mask doesn't exist, so the reservation is dangling.
                 Err(kube::Error::Api(e)) if e.code == 404 => {
-                    cm_api.delete(&reservation_name, &DeleteParams::default()).await?;
+                    cm_api
+                        .delete(&reservation_name, &DeleteParams::default())
+                        .await?;
                     deleted = true;
                     continue;
                 }
@@ -184,11 +192,12 @@ async fn prune(client: Client) -> Result<bool, Error> {
     Ok(deleted)
 }
 
+/// Creates the ConfigMap reserving a connection with the provider.
 pub async fn create_reservation(
     client: Client,
     name: &str,
     namespace: &str,
-    instance: &Mask,
+    provider: &Provider,
     reservation_name: &str,
     reservation_namespace: &str,
 ) -> Result<(), Error> {
@@ -197,7 +206,7 @@ pub async fn create_reservation(
         metadata: ObjectMeta {
             name: Some(reservation_name.to_owned()),
             namespace: Some(reservation_namespace.to_owned()),
-            owner_references: Some(vec![instance.controller_owner_ref(&()).unwrap()]),
+            owner_references: Some(vec![provider.controller_owner_ref(&()).unwrap()]),
             ..Default::default()
         },
         data: Some({

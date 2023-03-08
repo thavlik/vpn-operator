@@ -133,7 +133,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             // Assign a new provider to the Mask.
             if !actions::assign_provider(client.clone(), &name, &namespace, &instance).await? {
                 // Failed to assign a provider. Wait a bit and retry.
-                return Ok(Action::requeue(Duration::from_secs(1)));
+                return Ok(Action::requeue(Duration::from_secs(3)));
             }
 
             // Requeue immediately to set the phase to "Active".

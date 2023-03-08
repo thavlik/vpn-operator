@@ -59,8 +59,7 @@ async fn assign_provider_base(
     for provider in &providers {
         let provider_name = provider.name_any();
         let provider_namespace = provider.namespace().unwrap();
-        let max_clients = provider.spec.max_clients;
-        for id in 0..max_clients {
+        for id in 0..provider.spec.max_clients {
             let reservation_name = format!("{}-{}", &provider_name, id);
 
             // Try and take the slot.
@@ -138,8 +137,7 @@ async fn prune(client: Client) -> Result<bool, Error> {
         let name = provider.name_any();
         let namespace = provider.namespace().unwrap();
         let cm_api: Api<ConfigMap> = Api::namespaced(client.clone(), &namespace);
-        let max_clients = provider.spec.max_clients;
-        for id in 0..max_clients {
+        for id in 0..provider.spec.max_clients {
             let reservation_name = format!("{}-{}", &name, id);
             let cm = match cm_api.get(&reservation_name).await {
                 // Reservation exists, make sure it's not dangling.

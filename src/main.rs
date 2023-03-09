@@ -192,8 +192,8 @@ async fn get_secret(
     provider: &AssignedProvider,
 ) -> Result<Option<Secret>, Error> {
     let api: Api<Secret> = Api::namespaced(client, namespace);
-    let name = format!("{}-{}", name, &provider.name);
-    match api.get(&name).await {
+    let secret_name = format!("{}-{}", name, &provider.name);
+    match api.get(&secret_name).await {
         Ok(pod) => Ok(Some(pod)),
         Err(e) => match &e {
             kube::Error::Api(ae) => match ae.code {

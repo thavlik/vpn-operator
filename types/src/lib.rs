@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
     group = "vpn.beebs.dev",
     version = "v1",
     kind = "Provider",
-    plural = "Providers",
+    plural = "providers",
     derive = "PartialEq",
     status = "ProviderStatus",
     namespaced
@@ -32,7 +32,7 @@ pub struct ProviderStatus {}
     group = "vpn.beebs.dev",
     version = "v1",
     kind = "Mask",
-    plural = "Masks",
+    plural = "masks",
     derive = "PartialEq",
     status = "MaskStatus",
     namespaced
@@ -50,7 +50,7 @@ pub struct MaskStatus {
     #[serde(rename = "lastUpdated")]
     pub last_updated: Option<String>,
 
-    /// The assigned provider.
+    /// The assigned VPN service provider.
     pub provider: Option<AssignedProvider>,
 }
 

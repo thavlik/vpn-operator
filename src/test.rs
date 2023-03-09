@@ -1,4 +1,4 @@
-use crate::{AssignedProvider, Mask, Provider, ProviderSpec};
+use vpn_types::*;
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Secret;
 use kube::{

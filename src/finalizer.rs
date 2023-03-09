@@ -1,4 +1,4 @@
-use crate::crd::Mask;
+use vpn_types::*;
 use kube::api::{Patch, PatchParams};
 use kube::{Api, Client, Error};
 use serde_json::{json, Value};

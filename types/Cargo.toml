@@ -1,5 +1,5 @@
 [package]
-name = "vpn-operator"
+name = "vpn-types"
 version = "0.1.0"
 authors = ["Tom Havlik (thavlik@protonmail.com)"]
 edition = "2018"
@@ -23,11 +23,3 @@ serde_json = "1.0"
 schemars = "0.8"
 thiserror = "1"    # Custom Error definitions and convenient error mappings
 chrono = "0.4.23"
-vpn-types = { path = "types" }
-
-[build-dependencies]
-serde_yaml = "0.9"
-vpn-types = { path = "types" }
-kube = { version = "0.78.0", default-features = true, features = [
-    "derive",
-] }

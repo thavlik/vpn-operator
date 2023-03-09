@@ -2,8 +2,7 @@ use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::api::{DeleteParams, ObjectMeta, Patch, PatchParams, PostParams, Resource};
 use kube::{Api, Client, Error, ResourceExt};
 use std::collections::BTreeMap;
-
-use crate::crd::{AssignedProvider, Mask, MaskPhase, MaskStatus, Provider};
+use vpn_types::*;
 
 /// Friendly name for the controller.
 pub const MANAGER_NAME: &str = "vpn-operator";

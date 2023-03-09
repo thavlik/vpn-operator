@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use futures::stream::StreamExt;
 use k8s_openapi::api::core::v1::Secret;
 use kube::Resource;
@@ -8,11 +7,7 @@ use kube::{
     api::ListParams, client::Client, runtime::controller::Action, runtime::Controller, Api,
 };
 use tokio::time::Duration;
-
-use crate::crd::{AssignedProvider, Mask, MaskPhase};
-
-mod crd;
-pub use crd::*;
+pub use vpn_types::*;
 
 mod actions;
 mod finalizer;

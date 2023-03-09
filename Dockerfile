@@ -14,6 +14,7 @@ RUN cargo new vpn-operator
 WORKDIR /vpn-operator
 COPY Cargo.toml .
 COPY Cargo.lock .
+COPY types types
 RUN cargo build \
     && rm src/*.rs \
     && rm ./target/debug/vpn-operator*

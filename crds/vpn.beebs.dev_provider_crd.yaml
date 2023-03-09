@@ -1,0 +1,45 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: providers.vpn.beebs.dev
+spec:
+  group: vpn.beebs.dev
+  names:
+    categories: []
+    kind: Provider
+    plural: providers
+    shortNames: []
+    singular: provider
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns: []
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for ProviderSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              maxClients:
+                description: Maximum number of clients allowed to connect to the VPN with these credentials at any one time.
+                format: uint32
+                minimum: 0.0
+                type: integer
+              secret:
+                description: Reference to a Secret resource containing the env vars that will be injected into the gluetun container.
+                type: string
+            required:
+            - maxClients
+            - secret
+            type: object
+          status:
+            nullable: true
+            type: object
+        required:
+        - spec
+        title: Provider
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

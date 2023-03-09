@@ -11,7 +11,8 @@ use tokio::time::Duration;
 
 use crate::crd::{AssignedProvider, Mask, MaskPhase};
 
-pub mod crd;
+mod crd;
+pub use crd::*;
 
 mod actions;
 mod finalizer;

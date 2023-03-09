@@ -1,0 +1,25 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-operator
+rules:
+- apiGroups: [""]
+  resources:
+  - secrets
+  - configmaps
+  verbs:
+  - get
+  - create
+  - delete
+- apiGroups: ["vpn.beebs.dev"]
+  resources:
+  - providers
+  - providers/status
+  - masks
+  - masks/status
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch

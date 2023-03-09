@@ -61,26 +61,26 @@ async fn assign_provider_base(
         let provider_name = provider.name_any();
         let provider_namespace = provider.namespace().unwrap();
         for id in 0..provider.spec.max_clients {
-            let reservation_name = format!("{}-{}", &provider_name, id);
-
             // Try and take the slot.
             match create_reservation(
                 client.clone(),
                 name,
                 namespace,
                 provider,
-                &reservation_name,
+                format!("{}-{}", &provider_name, id),
                 &provider_namespace,
             )
             .await
             {
-                // Slot reserved.
+                // Slot was reserved successfully.
                 Ok(_) => {}
                 // Slot is already reserved.
                 Err(Error::Api(e)) if e.code == 409 => continue,
                 // Unknown failure reserving slot.
                 Err(e) => return Err(e),
             }
+
+            // Create the secret for the credentials.
 
             // Patch the Mask resource to add the provider.
             patch_status(client.clone(), name, namespace, instance, move |status| {
@@ -125,6 +125,7 @@ pub async fn assign_provider(
     // Unable to find a Provider. Reflect the error in the status.
     patch_status(client, name, namespace, instance, |status| {
         status.phase = Some(MaskPhase::ErrNoProvidersAvailable);
+        status.message = Some("There are no VPN providers with unused slots available.".to_owned());
     })
     .await?;
     Ok(false)
@@ -197,7 +198,7 @@ pub async fn create_reservation(
     name: &str,
     namespace: &str,
     provider: &Provider,
-    reservation_name: &str,
+    reservation_name: String,
     reservation_namespace: &str,
 ) -> Result<(), Error> {
     let cm_api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
@@ -205,6 +206,8 @@ pub async fn create_reservation(
         metadata: ObjectMeta {
             name: Some(reservation_name.to_owned()),
             namespace: Some(reservation_namespace.to_owned()),
+            // Set the Provider as the owner reference so the
+            // ConfigMap will be deleted with the Provider.
             owner_references: Some(vec![provider.controller_owner_ref(&()).unwrap()]),
             ..Default::default()
         },

@@ -43,6 +43,8 @@ pub struct MaskSpec {}
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Default, JsonSchema)]
 pub struct MaskStatus {
     pub phase: Option<MaskPhase>,
+    
+    pub message: Option<String>,
 
     /// Timestamp of when the status object was last updated.
     #[serde(rename = "lastUpdated")]

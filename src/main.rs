@@ -16,6 +16,9 @@ pub mod crd;
 mod actions;
 mod finalizer;
 
+#[cfg(test)]
+mod test;
+
 use actions::owns_reservation;
 
 #[tokio::main]

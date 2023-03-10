@@ -9,6 +9,8 @@ RUN apt-get update \
         pkg-config \
         wget \
     && rm -rf /var/lib/apt/lists/*
+RUN rustup toolchain install nightly \
+    && rustup default nightly
 WORKDIR /
 RUN cargo new vpn-operator
 WORKDIR /vpn-operator
@@ -22,6 +24,7 @@ COPY src src
 RUN touch -a -m src/main.rs \
     && cargo build
 FROM debian:bullseye-slim
+ENV RUST_BACKTRACE=1
 WORKDIR /
 COPY --from=builder /vpn-operator/target/debug/vpn-operator .
 CMD ["/vpn-operator"]

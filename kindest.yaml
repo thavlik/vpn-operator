@@ -1,2 +1,12 @@
 build:
   name: thavlik/vpn-operator
+env:
+  kubernetes:
+    resources:
+      - crds/
+    charts:
+      vpn:
+        name: chart/
+        releaseName: vpn
+        namespace: vpn
+        values: {}

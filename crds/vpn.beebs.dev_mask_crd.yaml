@@ -12,7 +12,13 @@ spec:
     singular: mask
   scope: Namespaced
   versions:
-  - additionalPrinterColumns: []
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: PHASE
+      type: string
+    - jsonPath: .status.lastUpdated
+      name: AGE
+      type: date
     name: v1
     schema:
       openAPIV3Schema:
@@ -41,11 +47,6 @@ spec:
                 description: The assigned VPN service provider.
                 nullable: true
                 properties:
-                  id:
-                    description: User index assigned to this Mask. This value must be less than the Provider's spec.maxClients, and is used to index the ConfigMap that reserves the connection.
-                    format: uint32
-                    minimum: 0.0
-                    type: integer
                   name:
                     description: Name of the Provider resource.
                     type: string
@@ -55,11 +56,20 @@ spec:
                   secret:
                     description: Name of the Secret resource which contains environment variables to be injected into the gluetun container. The controller will create this secret in the same namespace as the Mask resource. Its contents mirror the contents of the Provider's secret.
                     type: string
+                  slot:
+                    description: User index assigned to this Mask. This value must be less than the Provider's spec.maxClients, and is used to index the ConfigMap that reserves the connection.
+                    format: uint
+                    minimum: 0.0
+                    type: integer
+                  uid:
+                    description: UID of the Provider resource. Used to ensure the reference is valid if case a Provider resource is deleted and recreated with the same name.
+                    type: string
                 required:
-                - id
                 - name
                 - namespace
                 - secret
+                - slot
+                - uid
                 type: object
             type: object
         required:

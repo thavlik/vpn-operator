@@ -6,11 +6,18 @@ rules:
 - apiGroups: [""]
   resources:
   - secrets
+  verbs:
+  - get
+  - create
+  - delete
+- apiGroups: [""]
+  resources:
   - configmaps
   verbs:
   - get
   - create
   - delete
+  - list
 - apiGroups: ["vpn.beebs.dev"]
   resources:
   - providers

@@ -12,7 +12,16 @@ spec:
     singular: provider
   scope: Namespaced
   versions:
-  - additionalPrinterColumns: []
+  - additionalPrinterColumns:
+    - jsonPath: .status.activeSlots
+      name: ACTIVE
+      type: integer
+    - jsonPath: .status.phase
+      name: PHASE
+      type: string
+    - jsonPath: .status.lastUpdated
+      name: AGE
+      type: date
     name: v1
     schema:
       openAPIV3Schema:
@@ -22,7 +31,7 @@ spec:
             properties:
               maxClients:
                 description: Maximum number of clients allowed to connect to the VPN with these credentials at any one time.
-                format: uint32
+                format: uint
                 minimum: 0.0
                 type: integer
               secret:
@@ -34,6 +43,29 @@ spec:
             type: object
           status:
             nullable: true
+            properties:
+              activeSlots:
+                description: Number of active clients reserved by Mask resources.
+                format: uint
+                minimum: 0.0
+                nullable: true
+                type: integer
+              lastUpdated:
+                description: Timestamp of when the status object was last updated.
+                nullable: true
+                type: string
+              message:
+                description: A human-readable message indicating details about why the Provider is in this condition.
+                nullable: true
+                type: string
+              phase:
+                description: The current phase of the Provider.
+                enum:
+                - Pending
+                - ErrSecretMissing
+                - Active
+                nullable: true
+                type: string
             type: object
         required:
         - spec

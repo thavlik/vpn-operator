@@ -280,12 +280,7 @@ pub async fn get_provider_secret(
 }
 
 /// Creates the secret for the Mask to use. It is a copy of the Provider's secret.
-pub async fn create_secret(
-    client: Client,
-    name: &str,
-    namespace: &str,
-    instance: &Mask,
-) -> Result<(), Error> {
+pub async fn create_secret(client: Client, namespace: &str, instance: &Mask) -> Result<(), Error> {
     let provider = instance
         .status
         .as_ref()

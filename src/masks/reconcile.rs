@@ -178,7 +178,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
         }
         MaskAction::CreateSecret => {
             // Create the credentials env secret in the Mask's namespace.
-            actions::create_secret(client.clone(), &name, &namespace, &instance).await?;
+            actions::create_secret(client.clone(), &namespace, &instance).await?;
 
             // Requeue immediately to set the phase to Active.
             Ok(Action::requeue(Duration::ZERO))

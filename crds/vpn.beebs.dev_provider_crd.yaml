@@ -14,7 +14,7 @@ spec:
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.activeSlots
-      name: ACTIVE
+      name: IN USE
       type: integer
     - jsonPath: .status.phase
       name: PHASE

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
     namespaced
 )]
 #[kube(derive = "Default")]
-#[kube(printcolumn = "{\"jsonPath\": \".status.activeSlots\", \"name\": \"ACTIVE\", \"type\": \"integer\" }")]
+#[kube(printcolumn = "{\"jsonPath\": \".status.activeSlots\", \"name\": \"IN USE\", \"type\": \"integer\" }")]
 #[kube(printcolumn = "{\"jsonPath\": \".status.phase\", \"name\": \"PHASE\", \"type\": \"string\" }")]
 #[kube(printcolumn = "{\"jsonPath\": \".status.lastUpdated\", \"name\": \"AGE\", \"type\": \"date\" }")]
 pub struct ProviderSpec {

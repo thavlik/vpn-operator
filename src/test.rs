@@ -110,7 +110,7 @@ async fn wait_for_provider_assignment(
             WatchEvent::Added(m) | WatchEvent::Modified(m) => match m.status {
                 Some(ref status) if status.provider.is_some() => {
                     println!("provider assigned: {:?}", &status.provider);
-                    return Ok(status.provider.clone().unwrap())
+                    return Ok(status.provider.clone().unwrap());
                 }
                 _ => continue,
             },
@@ -146,14 +146,17 @@ async fn get_provider_secret(client: Client, provider: &Provider) -> Result<Secr
     Ok(secret_api.get(&provider.spec.secret).await?)
 }
 
-async fn wait_for_provider_secret(client: Client, name: &str, namespace: &str) -> Result<Secret, Error> {
+async fn wait_for_provider_secret(
+    client: Client,
+    name: &str,
+    namespace: &str,
+) -> Result<Secret, Error> {
     let provider_api: Api<Provider> = Api::namespaced(client.clone(), namespace);
     let provider = match provider_api.get(name).await {
         Ok(p) => p,
         Err(e) => return Err(e.into()),
     };
-    let secret_api: Api<Secret> =
-        Api::namespaced(client, namespace);
+    let secret_api: Api<Secret> = Api::namespaced(client, namespace);
     let lp = ListParams::default()
         .fields(&format!("metadata.name={}", &provider.spec.secret))
         .timeout(20);
@@ -201,7 +204,11 @@ async fn basic() -> Result<(), Error> {
         mask_name,
         namespace,
     ));
-    let mask_secret = tokio::spawn(wait_for_provider_secret(client.clone(), provider_name, namespace));
+    let mask_secret = tokio::spawn(wait_for_provider_secret(
+        client.clone(),
+        provider_name,
+        namespace,
+    ));
 
     // Create the test Mask.
     let mask = create_test_mask(client.clone(), mask_name, namespace).await?;
@@ -210,7 +217,10 @@ async fn basic() -> Result<(), Error> {
     let assigned_provider = assigned_provider.await.unwrap()?;
     assert_eq!(assigned_provider.name, provider.name_any());
     assert_eq!(assigned_provider.namespace, provider.namespace().unwrap());
-    assert_eq!(&assigned_provider.uid, provider.metadata.uid.as_deref().unwrap());
+    assert_eq!(
+        &assigned_provider.uid,
+        provider.metadata.uid.as_deref().unwrap()
+    );
     assert_eq!(
         assigned_provider.secret,
         format!("{}-{}", mask.name_any(), provider_uid)

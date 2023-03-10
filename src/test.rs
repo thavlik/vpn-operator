@@ -167,10 +167,11 @@ async fn wait_for_provider_secret(
             _ => {}
         }
     }
-    // See if we missed update events and we can get it now.
-    secret_api.get(&provider.spec.secret).await
+    // See if we missed update events and can get it now.
+    Ok(secret_api.get(&provider.spec.secret).await?)
 }
 
+/// Returns the generated Secret containing the VPN env credentials.
 async fn get_mask_secret(client: Client, name: &str, namespace: &str) -> Result<Secret, Error> {
     let mask_api: Api<Mask> = Api::namespaced(client.clone(), namespace);
     let mask: Mask = match mask_api.get(name).await {

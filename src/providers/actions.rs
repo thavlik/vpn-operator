@@ -29,7 +29,7 @@ pub async fn active(client: Client, instance: &Provider, active_slots: usize) ->
     Ok(())
 }
 
-/// Updates the Provider's phase to ErrSecretMissing, which indicates
+/// Updates the Provider's phase to ErrSecretNotFound, which indicates
 /// the VPN provider is ready to use.
 pub async fn secret_missing(
     client: Client,
@@ -38,7 +38,7 @@ pub async fn secret_missing(
 ) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.message = Some(format!("secret '{}' does not exist", secret_name));
-        status.phase = Some(ProviderPhase::ErrSecretMissing);
+        status.phase = Some(ProviderPhase::ErrSecretNotFound);
     })
     .await?;
     Ok(())

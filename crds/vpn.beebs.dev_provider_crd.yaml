@@ -62,7 +62,7 @@ spec:
                 description: The current phase of the Provider.
                 enum:
                 - Pending
-                - ErrSecretMissing
+                - ErrSecretNotFound
                 - Active
                 nullable: true
                 type: string

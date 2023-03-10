@@ -76,8 +76,8 @@ enum ProviderAction {
     /// Cleans up all subresources across all namespaces.
     Delete,
 
-    /// Set the `Provider` resource status.phase to ErrSecretMissing.
-    SecretMissing(String),
+    /// Set the `Provider` resource status.phase to ErrSecretNotFound.
+    SecretNotFound(String),
 
     /// Set the `Provider` resource status.phase to Active.
     Active { active_slots: usize },
@@ -149,7 +149,7 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // No need to requeue as the resource is being deleted.
             Ok(Action::await_change())
         }
-        ProviderAction::SecretMissing(secret_name) => {
+        ProviderAction::SecretNotFound(secret_name) => {
             // Reflect the error in the status object.
             actions::secret_missing(client, &instance, &secret_name).await?;
 
@@ -250,7 +250,7 @@ async fn determine_action(
     {
         // The resource specifies using a Secret that doesn't exist.
         // This is the only error state for the Provider resource.
-        return Ok(ProviderAction::SecretMissing(instance.spec.secret.clone()));
+        return Ok(ProviderAction::SecretNotFound(instance.spec.secret.clone()));
     }
 
     // Remaining actions aim to keep the status object current.

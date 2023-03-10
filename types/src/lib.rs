@@ -51,7 +51,7 @@ pub enum ProviderPhase {
     Pending,
 
     /// The spec.secret resource is missing.
-    ErrSecretMissing,
+    ErrSecretNotFound,
 
     /// The resource is ready to be used.
     Active,
@@ -63,7 +63,7 @@ impl std::str::FromStr for ProviderPhase {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Pending" => Ok(ProviderPhase::Pending),
-            "ErrSecretMissing" => Ok(ProviderPhase::ErrSecretMissing),
+            "ErrSecretNotFound" => Ok(ProviderPhase::ErrSecretNotFound),
             "Active" => Ok(ProviderPhase::Active),
             _ => Err(()),
         }

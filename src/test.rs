@@ -167,9 +167,8 @@ async fn wait_for_provider_secret(
             _ => {}
         }
     }
-    Err(Error::Other(
-        "Provider Secret did not appear before before timeout".to_owned(),
-    ))
+    // See if we missed update events and we can get it now.
+    secret_api.get(&provider.spec.secret).await
 }
 
 async fn get_mask_secret(client: Client, name: &str, namespace: &str) -> Result<Secret, Error> {

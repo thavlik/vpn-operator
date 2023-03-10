@@ -7,7 +7,7 @@ use kube::{
 use std::collections::BTreeMap;
 use vpn_types::*;
 
-use crate::util::{CONTROLLER_NAME, PROVIDER_UID_LABEL};
+use crate::util::{MANAGER_NAME, PROVIDER_UID_LABEL};
 
 /// Updates the Provider's phase to Pending, which indicates
 /// the resource made its initial appearance to the operator.
@@ -392,7 +392,7 @@ pub(crate) async fn patch_status(
     });
     let api: Api<Mask> = Api::namespaced(client, namespace);
     Ok(api
-        .patch_status(name, &PatchParams::apply(CONTROLLER_NAME), &patch)
+        .patch_status(name, &PatchParams::apply(MANAGER_NAME), &patch)
         .await?)
 }
 

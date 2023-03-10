@@ -1,4 +1,4 @@
-use crate::util::{Error, CONTROLLER_NAME};
+use crate::util::{Error, MANAGER_NAME};
 use k8s_openapi::api::core::v1::Secret;
 use kube::{
     api::{Api, DeleteParams, ListParams, Patch, PatchParams},
@@ -67,7 +67,7 @@ async fn patch_status(
     });
     let api: Api<Provider> = Api::namespaced(client, namespace);
     Ok(api
-        .patch_status(name, &PatchParams::apply(CONTROLLER_NAME), &patch)
+        .patch_status(name, &PatchParams::apply(MANAGER_NAME), &patch)
         .await?)
 }
 

@@ -4,7 +4,7 @@ use std::backtrace::Backtrace;
 pub const FINALIZER_NAME: &str = "vpn.beebs.dev/finalizer";
 
 /// Name of the kubernetes controller.
-pub const CONTROLLER_NAME: &str = "vpn-operator";
+pub const MANAGER_NAME: &str = "vpn-operator";
 
 /// Name of the label in the Secret metadata corresponding
 /// to the owner Provider UID.

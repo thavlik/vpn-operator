@@ -1,8 +1,8 @@
 use crate::types::*;
 use kube::{
     api::{Patch, PatchParams, Resource},
-    Api, Client, Error,
     core::NamespaceResourceScope,
+    Api, Client, Error,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::{clone::Clone, fmt::Debug};

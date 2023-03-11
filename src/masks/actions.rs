@@ -13,7 +13,7 @@ use crate::util::PROVIDER_UID_LABEL;
 /// the resource made its initial appearance to the operator.
 pub async fn pending(client: Client, instance: &Mask) -> Result<(), Error> {
     patch_status(client, instance, |status| {
-        status.message = Some("the resource first appeared to the controller".to_owned());
+        status.message = Some("Resource first appeared to the controller.".to_owned());
         status.phase = Some(MaskPhase::Pending);
     })
     .await?;
@@ -43,14 +43,14 @@ pub async fn unassign_provider(
     patch_status(client, instance, |status| {
         status.provider = None;
         status.phase = Some(MaskPhase::Pending);
-        status.message = Some("Provider was unassigned".to_owned());
+        status.message = Some("Provider was unassigned.".to_owned());
     })
     .await?;
     Ok(())
 }
 
 /// Lists all Provider resources, cluster-wide, that are in the Active phase.
-async fn list_providers(client: Client) -> Result<Vec<Provider>, Error> {
+async fn list_active_providers(client: Client) -> Result<Vec<Provider>, Error> {
     let api: Api<Provider> = Api::all(client);
     let providers = api.list(&Default::default()).await?;
     Ok(providers
@@ -69,7 +69,7 @@ async fn assign_provider_base(
     namespace: &str,
     instance: &Mask,
 ) -> Result<bool, Error> {
-    let providers = list_providers(client.clone()).await?;
+    let providers = list_active_providers(client.clone()).await?;
     let owner_uid = instance.metadata.uid.as_deref().unwrap();
     for provider in &providers {
         let provider_name = provider.metadata.name.as_deref().unwrap();
@@ -94,13 +94,14 @@ async fn assign_provider_base(
                 // Unknown failure reserving slot.
                 Err(e) => return Err(e),
             }
-            println!(
-                "Mask {}/{} reserved slot {} for {}/{}",
-                namespace, name, slot, provider_namespace, provider_name,
+            let msg = format!(
+                "reserved slot {} for {}/{}",
+                slot, provider_namespace, provider_name,
             );
+            println!("Mask {}/{} {}", namespace, name, msg);
             // Patch the Mask resource to assign the Provider.
             let provider_uid = provider.metadata.uid.clone().unwrap();
-            patch_status(client.clone(), instance, move |status| {
+            patch_status(client, instance, move |status| {
                 let secret = format!("{}-{}", name, &provider_uid);
                 status.provider = Some(AssignedProvider {
                     name: provider_name.to_owned(),
@@ -109,9 +110,11 @@ async fn assign_provider_base(
                     slot,
                     secret,
                 });
+                status.message = Some(msg);
             })
             .await?;
-            // Next reconciliation will create the credentials Secret.
+            // Next reconciliation will create the credentials Secret,
+            // after which the Mask's phase will be updated to Active.
             return Ok(true);
         }
     }
@@ -140,7 +143,7 @@ pub async fn assign_provider(
     // Unable to find a Provider. Reflect the error in the status.
     patch_status(client, instance, |status| {
         status.phase = Some(MaskPhase::ErrNoProvidersAvailable);
-        status.message = Some("There are no VPN providers with unused slots available.".to_owned());
+        status.message = Some("No VPN providers with unused slots available.".to_owned());
     })
     .await?;
     Ok(false)
@@ -194,7 +197,7 @@ async fn check_prune(
 /// Deletes dangling reservations that are no longer owned by a Mask.
 async fn prune(client: Client) -> Result<bool, Error> {
     let mut deleted = false;
-    let providers = list_providers(client.clone()).await?;
+    let providers = list_active_providers(client.clone()).await?;
     for provider in &providers {
         let name = provider.metadata.name.as_deref().unwrap();
         let namespace = provider.metadata.namespace.as_deref().unwrap();
@@ -358,8 +361,9 @@ pub async fn delete_reservation(
 
 /// Updates the Mask's phase to Active.
 pub async fn active(client: Client, instance: &Mask) -> Result<(), Error> {
-    patch_status(client.clone(), instance, |status| {
+    patch_status(client, instance, |status| {
         status.phase = Some(MaskPhase::Active);
+        status.message = Some("Mask is ready to use.".to_owned())
     })
     .await?;
     Ok(())

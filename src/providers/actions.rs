@@ -10,7 +10,7 @@ use vpn_types::*;
 /// the resource made its initial appearance to the operator.
 pub async fn pending(client: Client, instance: &Provider) -> Result<(), Error> {
     patch_status(client, instance, |status| {
-        status.message = Some("the resource first appeared to the controller".to_owned());
+        status.message = Some("Resource first appeared to the controller.".to_owned());
         status.phase = Some(ProviderPhase::Pending);
     })
     .await?;
@@ -21,7 +21,7 @@ pub async fn pending(client: Client, instance: &Provider) -> Result<(), Error> {
 /// the VPN provider is ready to use.
 pub async fn active(client: Client, instance: &Provider, active_slots: usize) -> Result<(), Error> {
     patch_status(client, instance, |status| {
-        status.message = Some("the VPN provider resource is ready to use".to_owned());
+        status.message = Some("VPN provider resource is ready to use.".to_owned());
         status.phase = Some(ProviderPhase::Active);
         status.active_slots = Some(active_slots);
     })
@@ -37,7 +37,7 @@ pub async fn secret_missing(
     secret_name: &str,
 ) -> Result<(), Error> {
     patch_status(client, instance, |status| {
-        status.message = Some(format!("secret '{}' does not exist", secret_name));
+        status.message = Some(format!("Secret '{}' does not exist.", secret_name));
         status.phase = Some(ProviderPhase::ErrSecretNotFound);
     })
     .await?;
@@ -85,7 +85,7 @@ pub async fn unassign_all(
         // Reconciliation will trigger a new assignment.
         patch_status(client.clone(), &mask, |status| {
             status.provider = None;
-            status.message = Some("Provider was unassigned upon its deletion".to_owned());
+            status.message = Some("Provider was unassigned upon its deletion.".to_owned());
             status.phase = Some(MaskPhase::Pending);
         })
         .await?;

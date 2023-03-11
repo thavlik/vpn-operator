@@ -9,4 +9,5 @@ env:
         name: chart/
         releaseName: vpn
         namespace: vpn
-        values: {}
+        values:
+          prometheus: true

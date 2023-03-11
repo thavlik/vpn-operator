@@ -25,6 +25,9 @@ thiserror = "1"
 chrono = "0.4.23"
 vpn-types = { path = "types" }
 json-patch = "0.3.0"
+prometheus = { version = "0.13", optional = true }
+hyper = { version = "^0.14", features = ["server", "http1", "tcp"] }
+lazy_static = "^1.4"
 
 [build-dependencies]
 serde_yaml = "0.9"
@@ -32,3 +35,7 @@ vpn-types = { path = "types" }
 kube = { version = "0.78.0", default-features = true, features = [
     "derive",
 ] }
+
+[features]
+default = ["metrics"] # Enable metrics by default
+metrics = ["dep:prometheus"] # metrics feature requires prometheus crate

@@ -24,5 +24,13 @@ spec:
             - /vpn-operator
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           image: {{ .Values.image }}
+      {{- if .Values.prometheus }}
+          env:
+            - name: METRICS_PORT
+              value: "8080"
+          ports:
+            - containerPort: 8080
+              name: metrics
+      {{- end }}
           resources:
 {{ toYaml .Values.resources | indent 12 }}

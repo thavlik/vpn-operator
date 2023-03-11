@@ -11,19 +11,19 @@ use prometheus::{labels, opts, register_counter, register_gauge, register_histog
 lazy_static! {
     static ref HTTP_COUNTER: Counter = register_counter!(opts!(
         "vpno_http_requests_total",
-        "Number of HTTP requests made.",
+        "Number of HTTP requests made to the metrics server.",
         labels! {"handler" => "all",}
     ))
     .unwrap();
     static ref HTTP_BODY_GAUGE: Gauge = register_gauge!(opts!(
         "vpno_http_response_size_bytes",
-        "The HTTP response sizes in bytes.",
+        "Metrics server HTTP response sizes in bytes.",
         labels! {"handler" => "all",}
     ))
     .unwrap();
     static ref HTTP_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "vpno_http_request_duration_seconds",
-        "The HTTP request latencies in seconds.",
+        "Metrics server HTTP request latencies in seconds.",
         &["handler"]
     )
     .unwrap();
@@ -59,4 +59,6 @@ pub async fn run_server(port: u16) {
     if let Err(err) = serve_future.await {
         panic!("metrics server error: {}", err);
     }
+    
+    panic!("metrics server exited");
 }

@@ -1,13 +1,13 @@
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::{
-    api::{DeleteParams, ObjectMeta, Patch, PatchParams, PostParams, Resource},
+    api::{DeleteParams, ObjectMeta, PostParams, Resource},
     Api, Client, Error,
 };
 
 use std::collections::BTreeMap;
 use vpn_types::*;
 
-use crate::util::{MANAGER_NAME, PROVIDER_UID_LABEL};
+use crate::util::PROVIDER_UID_LABEL;
 
 /// Updates the Provider's phase to Pending, which indicates
 /// the resource made its initial appearance to the operator.
@@ -364,38 +364,6 @@ pub async fn active(client: Client, instance: &Mask) -> Result<(), Error> {
     .await?;
     Ok(())
 }
-
-/// Patch the Mask's status object with the provided function.
-/// The function is passed a mutable reference to the status object,
-/// which is to be mutated in-place. Move closures are supported.
-//pub(crate) async fn patch_status(
-//    client: Client,
-//    instance: &Mask,
-//    f: impl FnOnce(&mut MaskStatus),
-//) -> Result<Mask, Error> {
-//    let name = instance.metadata.name.as_deref().unwrap();
-//    let namespace = instance.metadata.namespace.as_deref().unwrap();
-//    let patch = Patch::Json::<Mask>({
-//        let mut modified = instance.clone();
-//        let status = match modified.status.as_mut() {
-//            Some(status) => status,
-//            None => {
-//                modified.status = Some(Default::default());
-//                modified.status.as_mut().unwrap()
-//            },
-//        };
-//        f(status);
-//        status.last_updated = Some(chrono::Utc::now().to_rfc3339());
-//        json_patch::diff(
-//            &serde_json::to_value(instance).unwrap(),
-//            &serde_json::to_value(&modified).unwrap(),
-//        )
-//    });
-//    let api: Api<Mask> = Api::namespaced(client, namespace);
-//    Ok(api
-//        .patch_status(name, &PatchParams::apply(MANAGER_NAME), &patch)
-//        .await?)
-//}
 
 /// Gets the ConfigMap that reserves a connection with the Provider.
 /// This is mechanism used to prevent multiple Masks from using the

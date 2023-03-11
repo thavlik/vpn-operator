@@ -1,7 +1,7 @@
-use crate::util::{Error, MANAGER_NAME};
+use crate::util::Error;
 use k8s_openapi::api::core::v1::Secret;
 use kube::{
-    api::{Api, DeleteParams, ListParams, Patch, PatchParams},
+    api::{Api, DeleteParams, ListParams},
     Client,
 };
 use vpn_types::*;
@@ -43,49 +43,6 @@ pub async fn secret_missing(
     .await?;
     Ok(())
 }
-
-/// Patch the Provider's status object with the provided function.
-/// The function is passed a mutable reference to the status object,
-/// which is to be mutated in-place. Move closures are supported.
-//async fn patch_status(
-//    client: Client,
-//    instance: &Provider,
-//    f: impl FnOnce(&mut ProviderStatus),
-//) -> Result<Provider, Error> {
-//    let name = instance.metadata.name.as_deref().unwrap();
-//    let namespace = instance.metadata.namespace.as_deref().unwrap();
-//    //let patch = Patch::Apply({
-//    //    let mut status = instance.status.clone().unwrap_or_default();
-//    //    f(&mut status);
-//    //    let now = chrono::Utc::now().to_rfc3339();
-//    //    status.last_updated = Some(now);
-//    //    serde_json::json!({
-//    //        "apiVersion": "vpn.beebs.dev/v1",
-//    //        "kind": Provider::crd().spec.names.kind.clone(),
-//    //        "status": status,
-//    //    })
-//    //});
-//    let patch = Patch::Json::<Provider>({
-//        let mut modified = instance.clone();
-//        let status = match modified.status.as_mut() {
-//            Some(status) => status,
-//            None => {
-//                modified.status = Some(Default::default());
-//                modified.status.as_mut().unwrap()
-//            },
-//        };
-//        f(status);
-//        status.last_updated = Some(chrono::Utc::now().to_rfc3339());
-//        json_patch::diff(
-//            &serde_json::to_value(instance).unwrap(),
-//            &serde_json::to_value(&modified).unwrap(),
-//        )
-//    });
-//    let api: Api<Provider> = Api::namespaced(client, namespace);
-//    Ok(api
-//        .patch_status(name, &PatchParams::apply(MANAGER_NAME), &patch)
-//        .await?)
-//}
 
 async fn list_masks(client: Client) -> Result<Vec<Mask>, Error> {
     let api: Api<Mask> = Api::all(client);

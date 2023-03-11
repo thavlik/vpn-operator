@@ -47,7 +47,7 @@ impl Status for ProviderStatus {
     }
 }
 
-/// Patch the Mask's status object with the provided function.
+/// Patch the resource's status object with the provided function.
 /// The function is passed a mutable reference to the status object,
 /// which is to be mutated in-place. Move closures are supported.
 pub async fn patch_status<

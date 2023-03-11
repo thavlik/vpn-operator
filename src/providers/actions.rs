@@ -2,9 +2,9 @@ use crate::util::{Error, MANAGER_NAME};
 use k8s_openapi::api::core::v1::Secret;
 use kube::{
     api::{Api, DeleteParams, ListParams, Patch, PatchParams},
-    Client, CustomResourceExt,
+    Client,
 };
-use vpn_types::{Mask, MaskPhase, Provider, ProviderPhase, ProviderStatus};
+use vpn_types::*;
 
 /// Updates the Provider's phase to Pending, which indicates
 /// the resource made its initial appearance to the operator.
@@ -47,29 +47,45 @@ pub async fn secret_missing(
 /// Patch the Provider's status object with the provided function.
 /// The function is passed a mutable reference to the status object,
 /// which is to be mutated in-place. Move closures are supported.
-async fn patch_status(
-    client: Client,
-    instance: &Provider,
-    f: impl FnOnce(&mut ProviderStatus),
-) -> Result<Provider, Error> {
-    let name = instance.metadata.name.as_deref().unwrap();
-    let namespace = instance.metadata.namespace.as_deref().unwrap();
-    let patch = Patch::Apply({
-        let mut status = instance.status.clone().unwrap_or_default();
-        f(&mut status);
-        let now = chrono::Utc::now().to_rfc3339();
-        status.last_updated = Some(now);
-        serde_json::json!({
-            "apiVersion": "vpn.beebs.dev/v1",
-            "kind": Provider::crd().spec.names.kind.clone(),
-            "status": status,
-        })
-    });
-    let api: Api<Provider> = Api::namespaced(client, namespace);
-    Ok(api
-        .patch_status(name, &PatchParams::apply(MANAGER_NAME), &patch)
-        .await?)
-}
+//async fn patch_status(
+//    client: Client,
+//    instance: &Provider,
+//    f: impl FnOnce(&mut ProviderStatus),
+//) -> Result<Provider, Error> {
+//    let name = instance.metadata.name.as_deref().unwrap();
+//    let namespace = instance.metadata.namespace.as_deref().unwrap();
+//    //let patch = Patch::Apply({
+//    //    let mut status = instance.status.clone().unwrap_or_default();
+//    //    f(&mut status);
+//    //    let now = chrono::Utc::now().to_rfc3339();
+//    //    status.last_updated = Some(now);
+//    //    serde_json::json!({
+//    //        "apiVersion": "vpn.beebs.dev/v1",
+//    //        "kind": Provider::crd().spec.names.kind.clone(),
+//    //        "status": status,
+//    //    })
+//    //});
+//    let patch = Patch::Json::<Provider>({
+//        let mut modified = instance.clone();
+//        let status = match modified.status.as_mut() {
+//            Some(status) => status,
+//            None => {
+//                modified.status = Some(Default::default());
+//                modified.status.as_mut().unwrap()
+//            },
+//        };
+//        f(status);
+//        status.last_updated = Some(chrono::Utc::now().to_rfc3339());
+//        json_patch::diff(
+//            &serde_json::to_value(instance).unwrap(),
+//            &serde_json::to_value(&modified).unwrap(),
+//        )
+//    });
+//    let api: Api<Provider> = Api::namespaced(client, namespace);
+//    Ok(api
+//        .patch_status(name, &PatchParams::apply(MANAGER_NAME), &patch)
+//        .await?)
+//}
 
 async fn list_masks(client: Client) -> Result<Vec<Mask>, Error> {
     let api: Api<Mask> = Api::all(client);
@@ -110,7 +126,7 @@ pub async fn unassign_all(
     {
         // Unassign this provider in the Mask status object.
         // Reconciliation will trigger a new assignment.
-        crate::masks::actions::patch_status(client.clone(), &mask, |status| {
+        patch_status(client.clone(), &mask, |status| {
             status.provider = None;
             status.message = Some("Provider was unassigned upon its deletion".to_owned());
             status.phase = Some(MaskPhase::Pending);

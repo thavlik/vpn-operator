@@ -6,7 +6,6 @@ use kube::{
     core::WatchEvent,
     Api, ResourceExt,
 };
-use std::collections::BTreeMap;
 use vpn_types::*;
 
 /// All errors possible to occur during testing.
@@ -146,7 +145,7 @@ async fn get_provider_secret(client: Client, provider: &Provider) -> Result<Secr
     Ok(secret_api.get(&provider.spec.secret).await?)
 }
 
-async fn wait_for_provider_secret(
+async fn wait_for_mask_secret(
     client: Client,
     name: &str,
     namespace: &str,
@@ -171,18 +170,6 @@ async fn wait_for_provider_secret(
     Ok(secret_api.get(&provider.spec.secret).await?)
 }
 
-/// Returns the generated Secret containing the VPN env credentials.
-async fn get_mask_secret(client: Client, name: &str, namespace: &str) -> Result<Secret, Error> {
-    let mask_api: Api<Mask> = Api::namespaced(client.clone(), namespace);
-    let mask: Mask = match mask_api.get(name).await {
-        Ok(m) => m,
-        Err(e) => return Err(e.into()),
-    };
-    let secret_api: Api<Secret> = Api::namespaced(client, namespace);
-    let provider = mask.status.as_ref().unwrap().provider.as_ref().unwrap();
-    Ok(secret_api.get(&provider.secret).await?)
-}
-
 #[tokio::test]
 async fn basic() -> Result<(), Error> {
     let client: Client = Client::try_default().await.unwrap();
@@ -204,7 +191,7 @@ async fn basic() -> Result<(), Error> {
         mask_name,
         namespace,
     ));
-    let mask_secret = tokio::spawn(wait_for_provider_secret(
+    let mask_secret = tokio::spawn(wait_for_mask_secret(
         client.clone(),
         provider_name,
         namespace,
@@ -229,8 +216,7 @@ async fn basic() -> Result<(), Error> {
     // Ensure the Mask's credentials were correctly inherited
     // from the Provider's secret. It should be an exact match.
     let mask_secret = mask_secret.await.unwrap()?;
-    let secret_api: Api<Secret> = Api::namespaced(client.clone(), namespace);
-    let provider_secret = secret_api.get(&provider.spec.secret).await?;
+    let provider_secret = get_provider_secret(client.clone(), &provider).await?;
     assert_eq!(provider_secret.data, mask_secret.data);
 
     // Garbage collect the test resources.

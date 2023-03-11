@@ -1,7 +1,7 @@
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::{
     api::{DeleteParams, ObjectMeta, Patch, PatchParams, PostParams, Resource},
-    Api, Client, CustomResourceExt, Error,
+    Api, Client, Error,
 };
 
 use std::collections::BTreeMap;
@@ -368,28 +368,34 @@ pub async fn active(client: Client, instance: &Mask) -> Result<(), Error> {
 /// Patch the Mask's status object with the provided function.
 /// The function is passed a mutable reference to the status object,
 /// which is to be mutated in-place. Move closures are supported.
-pub(crate) async fn patch_status(
-    client: Client,
-    instance: &Mask,
-    f: impl FnOnce(&mut MaskStatus),
-) -> Result<Mask, Error> {
-    let name = instance.metadata.name.as_deref().unwrap();
-    let namespace = instance.metadata.namespace.as_deref().unwrap();
-    let patch = Patch::Apply({
-        let mut status = instance.status.clone().unwrap_or_default();
-        f(&mut status);
-        status.last_updated = Some(chrono::Utc::now().to_rfc3339());
-        serde_json::json!({
-            "apiVersion": "vpn.beebs.dev/v1",
-            "kind": Mask::crd().spec.names.kind.clone(),
-            "status": status,
-        })
-    });
-    let api: Api<Mask> = Api::namespaced(client, namespace);
-    Ok(api
-        .patch_status(name, &PatchParams::apply(MANAGER_NAME), &patch)
-        .await?)
-}
+//pub(crate) async fn patch_status(
+//    client: Client,
+//    instance: &Mask,
+//    f: impl FnOnce(&mut MaskStatus),
+//) -> Result<Mask, Error> {
+//    let name = instance.metadata.name.as_deref().unwrap();
+//    let namespace = instance.metadata.namespace.as_deref().unwrap();
+//    let patch = Patch::Json::<Mask>({
+//        let mut modified = instance.clone();
+//        let status = match modified.status.as_mut() {
+//            Some(status) => status,
+//            None => {
+//                modified.status = Some(Default::default());
+//                modified.status.as_mut().unwrap()
+//            },
+//        };
+//        f(status);
+//        status.last_updated = Some(chrono::Utc::now().to_rfc3339());
+//        json_patch::diff(
+//            &serde_json::to_value(instance).unwrap(),
+//            &serde_json::to_value(&modified).unwrap(),
+//        )
+//    });
+//    let api: Api<Mask> = Api::namespaced(client, namespace);
+//    Ok(api
+//        .patch_status(name, &PatchParams::apply(MANAGER_NAME), &patch)
+//        .await?)
+//}
 
 /// Gets the ConfigMap that reserves a connection with the Provider.
 /// This is mechanism used to prevent multiple Masks from using the

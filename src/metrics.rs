@@ -59,6 +59,6 @@ pub async fn run_server(port: u16) {
     if let Err(err) = serve_future.await {
         panic!("metrics server error: {}", err);
     }
-    
+
     panic!("metrics server exited");
 }

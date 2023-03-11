@@ -1,7 +1,8 @@
 use crate::types::*;
+use futures::{StreamExt, TryStreamExt};
 use kube::{
-    api::{Patch, PatchParams, Resource},
-    core::NamespaceResourceScope,
+    api::{ListParams, Patch, PatchParams, Resource},
+    core::{NamespaceResourceScope, WatchEvent},
     Api, Client, Error,
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -79,3 +80,5 @@ where
         .patch_status(name, &PatchParams::apply("controller"), &patch)
         .await?)
 }
+
+

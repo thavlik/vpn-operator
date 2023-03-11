@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 pub struct ProviderSpec {
     /// Maximum number of clients allowed to connect to the VPN
     /// with these credentials at any one time.
-    #[serde(rename = "maxClients")]
+    #[serde(rename = "maxSlots")]
     pub max_slots: usize,
 
     /// Reference to a Secret resource containing the env vars

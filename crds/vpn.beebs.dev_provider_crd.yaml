@@ -29,7 +29,7 @@ spec:
         properties:
           spec:
             properties:
-              maxClients:
+              maxSlots:
                 description: Maximum number of clients allowed to connect to the VPN with these credentials at any one time.
                 format: uint
                 minimum: 0.0
@@ -38,7 +38,7 @@ spec:
                 description: Reference to a Secret resource containing the env vars that will be injected into the gluetun container.
                 type: string
             required:
-            - maxClients
+            - maxSlots
             - secret
             type: object
           status:

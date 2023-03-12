@@ -1,5 +1,5 @@
-build:
-  name: thavlik/vpn-operator
+dependencies:
+  - operator
 env:
   kubernetes:
     resources:

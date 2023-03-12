@@ -25,10 +25,8 @@ spec:
             - manage-providers
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           image: {{ .Values.image }}
-          env:
-            - name: RUST_BACKTRACE
-              value: full
       {{- if .Values.prometheus.exposed }}
+          env:
             - name: METRICS_PORT
               value: "8080"
           ports:

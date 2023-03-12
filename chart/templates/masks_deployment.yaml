@@ -25,10 +25,8 @@ spec:
             - manage-masks
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           image: {{ .Values.image }}
-          env:
-            - name: RUST_BACKTRACE
-              value: full
       {{- if .Values.prometheus.expose }}
+          env:
             - name: METRICS_PORT
               value: "8080"
           ports:

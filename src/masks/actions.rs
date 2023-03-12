@@ -161,7 +161,7 @@ pub async fn assign_provider(
     if providers.is_empty() {
         // Reflect the error in the status.
         patch_status(client, instance, |status| {
-            status.phase = Some(MaskPhase::ErrNoProvidersAvailable);
+            status.phase = Some(MaskPhase::ErrNoProviders);
             status.message = Some("No VPN providers available.".to_owned());
         })
         .await?;

@@ -25,6 +25,7 @@ spec:
         description: Auto-generated derived type for MaskSpec via `CustomResource`
         properties:
           spec:
+            description: Mask is a resource that represents a VPN connection. It reserves a slot with a Provider resource, and creates a Secret resource containing the environment variables to be injected into the gluetun container.
             properties:
               providers:
                 description: Optional list of providers to use at the exclusion of others. Omit the field if you are okay with being assigned any provider. These values correspond to the Provider resource's metadata.labels["vpn.beebs.dev/provider"]
@@ -41,18 +42,20 @@ spec:
                 nullable: true
                 type: string
               message:
+                description: A human-readable message indicating details about why the Mask is in this phase.
                 nullable: true
                 type: string
               phase:
+                description: The current phase of the Mask.
                 enum:
                 - Pending
                 - Active
                 - Waiting
-                - ErrNoProvidersAvailable
+                - ErrNoProviders
                 nullable: true
                 type: string
               provider:
-                description: The assigned VPN service provider.
+                description: Details for the assigned VPN service provider.
                 nullable: true
                 properties:
                   name:

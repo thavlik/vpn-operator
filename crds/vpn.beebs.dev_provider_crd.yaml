@@ -28,6 +28,7 @@ spec:
         description: Auto-generated derived type for ProviderSpec via `CustomResource`
         properties:
           spec:
+            description: Provider is a resource that represents a VPN service provider. It contains a reference to a Secret containing the  credentials to connect to the VPN service, and a maximum number of clients that can connect to the VPN at any one time.
             properties:
               maxSlots:
                 description: Maximum number of clients allowed to connect to the VPN with these credentials at any one time.
@@ -55,7 +56,7 @@ spec:
                 nullable: true
                 type: string
               message:
-                description: A human-readable message indicating details about why the Provider is in this condition.
+                description: A human-readable message indicating details about why the Provider is in this phase.
                 nullable: true
                 type: string
               phase:

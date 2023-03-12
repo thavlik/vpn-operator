@@ -176,8 +176,8 @@ async fn wait_for_provider_assignment(
     )))
 }
 
-/// Waits for the Mask resourece to observe phase ErrNoProvidersAvailable.
-async fn wait_for_err_no_providers_available(
+/// Waits for the Mask resourece to observe phase ErrNoProviders.
+async fn wait_for_err_no_providers(
     client: Client,
     namespace: &str,
     slot: usize,
@@ -192,7 +192,7 @@ async fn wait_for_err_no_providers_available(
         match event {
             WatchEvent::Added(m) | WatchEvent::Modified(m) => {
                 match m.status.as_ref().map(|status| status.phase) {
-                    Some(Some(MaskPhase::ErrNoProvidersAvailable)) => {
+                    Some(Some(MaskPhase::ErrNoProviders)) => {
                         return Ok(());
                     }
                     _ => continue,
@@ -204,12 +204,12 @@ async fn wait_for_err_no_providers_available(
     // See if we missed it.
     let mask = mask_api.get(&name).await?;
     if let Some(ref status) = mask.status {
-        if let Some(MaskPhase::ErrNoProvidersAvailable) = status.phase {
+        if let Some(MaskPhase::ErrNoProviders) = status.phase {
             return Ok(());
         }
     }
     Err(Error::Other(format!(
-        "ErrNoProvidersAvailable not observed for Mask {} before timeout",
+        "ErrNoProviders not observed for Mask {} before timeout",
         name,
     )))
 }
@@ -355,7 +355,7 @@ async fn basic() -> Result<(), Error> {
 }
 
 #[tokio::test]
-async fn err_no_providers_available() -> Result<(), Error> {
+async fn err_no_providers() -> Result<(), Error> {
     let client: Client = Client::try_default().await.unwrap();
     let (uid, namespace) = create_test_namespace(client.clone()).await?;
     let provider_label = format!("{}-{}", PROVIDER_NAME, uid);
@@ -364,7 +364,7 @@ async fn err_no_providers_available() -> Result<(), Error> {
     let fail = {
         let client = client.clone();
         let namespace = namespace.clone();
-        spawn(async move { wait_for_err_no_providers_available(client, &namespace, 0).await })
+        spawn(async move { wait_for_err_no_providers(client, &namespace, 0).await })
     };
 
     // Create a Mask without first creating the Provider.

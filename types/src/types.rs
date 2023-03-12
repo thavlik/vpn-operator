@@ -2,6 +2,10 @@ use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// Provider is a resource that represents a VPN service provider.
+/// It contains a reference to a Secret containing the  credentials
+/// to connect to the VPN service, and a maximum number of clients
+/// that can connect to the VPN at any one time.
 #[derive(CustomResource, Serialize, Default, Deserialize, Debug, PartialEq, Clone, JsonSchema)]
 #[kube(
     group = "vpn.beebs.dev",
@@ -39,7 +43,7 @@ pub struct ProviderStatus {
     pub phase: Option<ProviderPhase>,
 
     /// A human-readable message indicating details about why the
-    /// Provider is in this condition.
+    /// Provider is in this phase.
     pub message: Option<String>,
 
     /// Timestamp of when the status object was last updated.
@@ -76,6 +80,10 @@ impl std::str::FromStr for ProviderPhase {
     }
 }
 
+/// Mask is a resource that represents a VPN connection.
+/// It reserves a slot with a Provider resource, and
+/// creates a Secret resource containing the environment
+/// variables to be injected into the gluetun container.
 #[derive(CustomResource, Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 #[kube(
     group = "vpn.beebs.dev",
@@ -102,15 +110,18 @@ pub struct MaskSpec {
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Default, JsonSchema)]
 pub struct MaskStatus {
+    /// The current phase of the Mask.
     pub phase: Option<MaskPhase>,
 
+    /// A human-readable message indicating details about why the
+    /// Mask is in this phase.
     pub message: Option<String>,
 
     /// Timestamp of when the status object was last updated.
     #[serde(rename = "lastUpdated")]
     pub last_updated: Option<String>,
 
-    /// The assigned VPN service provider.
+    /// Details for the assigned VPN service provider.
     pub provider: Option<AssignedProvider>,
 }
 
@@ -142,10 +153,14 @@ pub struct AssignedProvider {
 
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, JsonSchema)]
 pub enum MaskPhase {
+    /// The resource first appeared to the controller.
     Pending,
+    /// The VPN credentials are ready to be used.
     Active,
+    /// The resource is waiting for a Provider to become available.
     Waiting,
-    ErrNoProvidersAvailable,
+    /// No Provider resources are available.
+    ErrNoProviders,
 }
 
 impl std::str::FromStr for MaskPhase {
@@ -156,7 +171,7 @@ impl std::str::FromStr for MaskPhase {
             "Pending" => Ok(MaskPhase::Pending),
             "Active" => Ok(MaskPhase::Active),
             "Waiting" => Ok(MaskPhase::Waiting),
-            "ErrNoProvidersAvailable" => Ok(MaskPhase::ErrNoProvidersAvailable),
+            "ErrNoProviders" => Ok(MaskPhase::ErrNoProviders),
             _ => Err(()),
         }
     }

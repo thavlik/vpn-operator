@@ -1,3 +1,4 @@
+use crate::util::PROVIDER_NAME_LABEL;
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::{Namespace, Secret};
 use kube::{
@@ -7,7 +8,7 @@ use kube::{
     Api, CustomResourceExt, ResourceExt,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::{clone::Clone, fmt::Debug};
+use std::{clone::Clone, collections::BTreeMap, fmt::Debug};
 use tokio::spawn;
 use vpn_types::*;
 
@@ -33,7 +34,7 @@ pub enum Error {
 fn get_test_provider_secret(provider: &Provider) -> Secret {
     Secret {
         metadata: ObjectMeta {
-            name: Some(PROVIDER_NAME.to_owned()),
+            name: Some(provider.metadata.name.clone().unwrap()),
             namespace: Some(provider.metadata.namespace.clone().unwrap()),
             owner_references: Some(vec![provider.controller_owner_ref(&()).unwrap()]),
             ..Default::default()
@@ -53,16 +54,21 @@ fn get_test_provider_secret(provider: &Provider) -> Secret {
 }
 
 /// Returns the test Provider resource.
-fn get_test_provider(namespace: &str) -> Provider {
+fn get_test_provider(name: &str, namespace: &str) -> Provider {
     Provider {
         metadata: ObjectMeta {
-            name: Some(PROVIDER_NAME.to_string()),
+            name: Some(name.to_owned()),
             namespace: Some(namespace.to_owned()),
+            labels: Some({
+                let mut labels = BTreeMap::new();
+                labels.insert(PROVIDER_NAME_LABEL.to_owned(), name.to_owned());
+                labels
+            }),
             ..Default::default()
         },
         spec: ProviderSpec {
             max_slots: MAX_SLOTS,
-            secret: PROVIDER_NAME.to_owned(),
+            secret: name.to_owned(),
             ..Default::default()
         },
         ..Default::default()
@@ -70,50 +76,66 @@ fn get_test_provider(namespace: &str) -> Provider {
 }
 
 /// Returns a test Mask resource with the given slot as the name suffix.
-fn get_test_mask(namespace: &str, slot: usize) -> Mask {
+fn get_test_mask(namespace: &str, slot: usize, provider_label: &str) -> Mask {
     Mask {
         metadata: ObjectMeta {
             name: Some(format!("{}-{}", MASK_NAME, slot)),
             namespace: Some(namespace.to_owned()),
             ..Default::default()
         },
+        spec: MaskSpec {
+            providers: Some(vec![provider_label.to_owned()]),
+        },
         ..Default::default()
     }
 }
 
 /// Create the test Provider's credentials Secret resource.
-async fn create_test_provider_secret(client: Client, provider: &Provider) -> Result<Secret, Error> {
+async fn create_test_provider_secret(
+    client: Client,
+    namespace: &str,
+    provider: &Provider,
+) -> Result<Secret, Error> {
     let secret = get_test_provider_secret(&provider);
-    let secret_api: Api<Secret> =
-        Api::namespaced(client, provider.metadata.namespace.as_deref().unwrap());
+    let secret_api: Api<Secret> = Api::namespaced(client, namespace);
     Ok(secret_api.create(&Default::default(), &secret).await?)
 }
 
 /// Creates the test Provider and its secret.
-async fn create_test_provider(client: Client, namespace: &str) -> Result<Provider, Error> {
+async fn create_test_provider(
+    client: Client,
+    namespace: &str,
+    uid: &str,
+) -> Result<Provider, Error> {
+    let name = format!("{}-{}", PROVIDER_NAME, uid);
     let provider = create_wait(
         client.clone(),
-        PROVIDER_NAME,
+        &name,
         namespace,
-        get_test_provider(namespace),
+        get_test_provider(&name, namespace),
     )
     .await?;
     println!(
         "Created Provider with uid {}",
         provider.metadata.uid.as_deref().unwrap()
     );
-    create_test_provider_secret(client, &provider).await?;
+    create_test_provider_secret(client, namespace, &provider).await?;
     Ok(provider)
 }
 
 /// Creates a test Mask with the given slot as the name suffix.
-async fn create_test_mask(client: Client, namespace: &str, slot: usize) -> Result<Mask, Error> {
+async fn create_test_mask(
+    client: Client,
+    namespace: &str,
+    slot: usize,
+    provider_label: &str,
+) -> Result<Mask, Error> {
     let mask_name = format!("{}-{}", MASK_NAME, slot);
     Ok(create_wait(
         client,
         &mask_name,
         namespace,
-        get_test_mask(namespace, slot),
+        get_test_mask(namespace, slot, provider_label),
     )
     .await?)
 }
@@ -150,6 +172,44 @@ async fn wait_for_provider_assignment(
     }
     Err(Error::Other(format!(
         "Provider not assigned to Mask {} before timeout",
+        name,
+    )))
+}
+
+/// Waits for the Mask resourece to observe phase ErrNoProvidersAvailable.
+async fn wait_for_err_no_providers_available(
+    client: Client,
+    namespace: &str,
+    slot: usize,
+) -> Result<(), Error> {
+    let name = format!("{}-{}", MASK_NAME, slot);
+    let mask_api: Api<Mask> = Api::namespaced(client, namespace);
+    let lp = ListParams::default()
+        .fields(&format!("metadata.name={}", &name))
+        .timeout(20);
+    let mut stream = mask_api.watch(&lp, "0").await?.boxed();
+    while let Some(event) = stream.try_next().await? {
+        match event {
+            WatchEvent::Added(m) | WatchEvent::Modified(m) => {
+                match m.status.as_ref().map(|status| status.phase) {
+                    Some(Some(MaskPhase::ErrNoProvidersAvailable)) => {
+                        return Ok(());
+                    }
+                    _ => continue,
+                }
+            }
+            _ => continue,
+        }
+    }
+    // See if we missed it.
+    let mask = mask_api.get(&name).await?;
+    if let Some(ref status) = mask.status {
+        if let Some(MaskPhase::ErrNoProvidersAvailable) = status.phase {
+            return Ok(());
+        }
+    }
+    Err(Error::Other(format!(
+        "ErrNoProvidersAvailable not observed for Mask {} before timeout",
         name,
     )))
 }
@@ -216,8 +276,9 @@ async fn wait_for_secret(
     Ok(secret_api.get(&secret_name).await?)
 }
 
-async fn create_test_namespace(client: Client) -> Result<String, Error> {
-    let name = format!("{}{}", NAMESPACE_PREFIX, uuid::Uuid::new_v4());
+async fn create_test_namespace(client: Client) -> Result<(String, String), Error> {
+    let uid = uuid::Uuid::new_v4();
+    let name = format!("{}{}", NAMESPACE_PREFIX, uid);
     let namespace_api: Api<Namespace> = Api::all(client);
     let namespace = Namespace {
         metadata: ObjectMeta {
@@ -229,7 +290,7 @@ async fn create_test_namespace(client: Client) -> Result<String, Error> {
     namespace_api
         .create(&Default::default(), &namespace)
         .await?;
-    Ok(name)
+    Ok((uid.to_string(), name))
 }
 
 async fn delete_namespace(client: Client, name: &str) -> Result<(), Error> {
@@ -246,10 +307,11 @@ async fn cleanup(client: Client, namespace: &str) -> Result<(), Error> {
 #[tokio::test]
 async fn basic() -> Result<(), Error> {
     let client: Client = Client::try_default().await.unwrap();
-    let namespace = create_test_namespace(client.clone()).await?;
+    let (uid, namespace) = create_test_namespace(client.clone()).await?;
+    let provider_label = format!("{}-{}", PROVIDER_NAME, uid);
 
     // Create the test Provider.
-    let provider = create_test_provider(client.clone(), &namespace)
+    let provider = create_test_provider(client.clone(), &namespace, &uid)
         .await
         .expect("failed to create provider");
     let provider_uid = provider.metadata.uid.as_deref().unwrap();
@@ -268,7 +330,7 @@ async fn basic() -> Result<(), Error> {
         let namespace = namespace.clone();
         spawn(async move { wait_for_provider_assignment(client, &namespace, 0).await })
     };
-    let mask = create_test_mask(client.clone(), &namespace, 0).await?;
+    let mask = create_test_mask(client.clone(), &namespace, 0, &provider_label).await?;
 
     // The provider assigned should be the same as the one we created.
     let assigned_provider = assigned_provider.await.unwrap()?;
@@ -287,7 +349,32 @@ async fn basic() -> Result<(), Error> {
     assert_eq!(provider_secret.data, mask_secret.data);
 
     // Garbage collect the test resources.
-    cleanup(client.clone(), &namespace).await?;
+    cleanup(client, &namespace).await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn err_no_providers_available() -> Result<(), Error> {
+    let client: Client = Client::try_default().await.unwrap();
+    let (uid, namespace) = create_test_namespace(client.clone()).await?;
+    let provider_label = format!("{}-{}", PROVIDER_NAME, uid);
+
+    // Watch for the error message in the Mask's status.
+    let fail = {
+        let client = client.clone();
+        let namespace = namespace.clone();
+        spawn(async move { wait_for_err_no_providers_available(client, &namespace, 0).await })
+    };
+
+    // Create a Mask without first creating the Provider.
+    create_test_mask(client.clone(), &namespace, 0, &provider_label).await?;
+
+    // Ensure the error state is observed.
+    fail.await.unwrap()?;
+
+    // Garbage collect the test resources.
+    cleanup(client, &namespace).await?;
 
     Ok(())
 }
@@ -295,12 +382,13 @@ async fn basic() -> Result<(), Error> {
 #[tokio::test]
 async fn waiting() -> Result<(), Error> {
     let client: Client = Client::try_default().await.unwrap();
-    let namespace = create_test_namespace(client.clone()).await?;
+    let (uid, namespace) = create_test_namespace(client.clone()).await?;
 
     // Create the test Provider.
-    let provider = create_test_provider(client.clone(), &namespace)
+    let provider = create_test_provider(client.clone(), &namespace, &uid)
         .await
         .expect("failed to create test provider");
+    let provider_name = provider.metadata.name.as_deref().unwrap();
     let provider_uid = provider.metadata.uid.as_deref().unwrap();
 
     // Watch for a Provider to be assigned to the Mask.
@@ -317,7 +405,7 @@ async fn waiting() -> Result<(), Error> {
         let namespace = namespace.clone();
         spawn(async move { wait_for_provider_assignment(client, &namespace, 0).await })
     };
-    let mask0 = create_test_mask(client.clone(), &namespace, 0).await?;
+    let mask0 = create_test_mask(client.clone(), &namespace, 0, provider_name).await?;
 
     // The provider assigned should be the same as the one we created.
     let assigned_provider = assigned_provider
@@ -347,7 +435,7 @@ async fn waiting() -> Result<(), Error> {
         let namespace = namespace.clone();
         spawn(async move { wait_for_waiting(client, &namespace, 1).await })
     };
-    let mask1 = create_test_mask(client.clone(), &namespace, 1).await?;
+    let mask1 = create_test_mask(client.clone(), &namespace, 1, provider_name).await?;
 
     // Ensure the error state was observed.
     mask1_fail.await.unwrap()?;
@@ -377,7 +465,7 @@ async fn waiting() -> Result<(), Error> {
     );
 
     // Garbage collect the test resources.
-    cleanup(client.clone(), &namespace).await?;
+    cleanup(client, &namespace).await?;
 
     Ok(())
 }

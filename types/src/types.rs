@@ -93,7 +93,12 @@ impl std::str::FromStr for ProviderPhase {
 #[kube(
     printcolumn = "{\"jsonPath\": \".status.lastUpdated\", \"name\": \"AGE\", \"type\": \"date\" }"
 )]
-pub struct MaskSpec {}
+pub struct MaskSpec {
+    /// Optional list of providers to use at the exclusion of others.
+    /// Omit the field if you are okay with being assigned any provider.
+    /// These values correspond to the Provider resource's metadata.labels["vpn.beebs.dev/provider"]
+    pub providers: Option<Vec<String>>,
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Default, JsonSchema)]
 pub struct MaskStatus {

@@ -7,7 +7,7 @@ use kube::{
 use std::collections::BTreeMap;
 use vpn_types::*;
 
-use crate::util::PROVIDER_UID_LABEL;
+use crate::util::{PROVIDER_NAME_LABEL, PROVIDER_UID_LABEL};
 
 /// Updates the Provider's phase to Pending, which indicates
 /// the resource made its initial appearance to the operator.
@@ -38,6 +38,7 @@ pub async fn unassign_provider(
         // will require a pruning operator to resolve.
         delete_reservation(client.clone(), name, namespace, instance).await?;
     }
+
     // Patch the Mask resource to remove the provider. We do
     // this last because the previous operations require so.
     patch_status(client, instance, |status| {
@@ -46,19 +47,45 @@ pub async fn unassign_provider(
         status.message = Some("Provider was unassigned.".to_owned());
     })
     .await?;
+
     Ok(())
 }
 
 /// Lists all Provider resources, cluster-wide, that are in the Active phase.
-async fn list_active_providers(client: Client) -> Result<Vec<Provider>, Error> {
+/// An optional filter can specified, in which case only Providers with a
+/// matching vpn.beebs.dev/provider label will be returned.
+async fn list_active_providers(
+    client: Client,
+    filter: Option<&Vec<String>>,
+) -> Result<Vec<Provider>, Error> {
     let api: Api<Provider> = Api::all(client);
-    let providers = api.list(&Default::default()).await?;
-    Ok(providers
-        .items
+    let providers = api
+        .list(&Default::default())
+        .await?
         .into_iter()
         .filter(|p| p.metadata.deletion_timestamp.is_none())
-        .filter(|p| p.status.as_ref().map(|s| s.phase) == Some(Some(ProviderPhase::Active)))
-        .collect())
+        .filter(|p| {
+            p.status
+                .as_ref()
+                .map(|s| s.phase == Some(ProviderPhase::Active))
+                .unwrap_or(false)
+        });
+    if let Some(ref filter) = filter {
+        return Ok(providers
+            .filter(|p| {
+                p.metadata
+                    .labels
+                    .as_ref()
+                    .map(|l| {
+                        l.get(PROVIDER_NAME_LABEL)
+                            .map(|v| filter.contains(v))
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false)
+            })
+            .collect());
+    }
+    Ok(providers.collect())
 }
 
 /// Assigns a new Provider to the Mask. Returns true
@@ -68,13 +95,13 @@ async fn assign_provider_base(
     name: &str,
     namespace: &str,
     instance: &Mask,
+    providers: &Vec<Provider>,
 ) -> Result<bool, Error> {
-    let providers = list_active_providers(client.clone()).await?;
     let owner_uid = instance.metadata.uid.as_deref().unwrap();
-    for provider in &providers {
+    for provider in providers {
         let provider_name = provider.metadata.name.as_deref().unwrap();
         let provider_namespace = provider.metadata.namespace.as_deref().unwrap();
-        for slot in 0..provider.spec.max_slots {
+        for slot in list_inactive_slots(client.clone(), provider).await? {
             // Try and take the slot.
             match create_reservation(
                 client.clone(),
@@ -95,7 +122,7 @@ async fn assign_provider_base(
                 Err(e) => return Err(e),
             }
             let msg = format!(
-                "reserved slot {} for {}/{}",
+                "reserved slot {} for Provider {}/{}",
                 slot, provider_namespace, provider_name,
             );
             println!("Mask {}/{} {}", namespace, name, msg);
@@ -130,27 +157,30 @@ pub async fn assign_provider(
     instance: &Mask,
 ) -> Result<bool, Error> {
     // See if there are any providers available.
-    if list_active_providers(client.clone()).await?.is_empty() {
+    let providers = list_active_providers(client.clone(), instance.spec.providers.as_ref()).await?;
+    if providers.is_empty() {
         // Reflect the error in the status.
         patch_status(client, instance, |status| {
             status.phase = Some(MaskPhase::ErrNoProvidersAvailable);
             status.message = Some("No VPN providers available.".to_owned());
         })
         .await?;
-        // No need to prune.
+
+        // No reason to prune and retry.
         return Ok(false);
     }
 
     // Try to assign a provider.
-    if assign_provider_base(client.clone(), name, namespace, instance).await? {
+    if assign_provider_base(client.clone(), name, namespace, instance, &providers).await? {
         return Ok(true);
     }
 
     // Remove any dangling reservations.
     if prune(client.clone()).await? {
-        // One or more dangling reservations were removed,
-        // so retrying should succeed.
-        if assign_provider_base(client.clone(), name, namespace, instance).await? {
+        // One or more dangling reservations were removed, so retrying should succeed.
+        let providers =
+            list_active_providers(client.clone(), instance.spec.providers.as_ref()).await?;
+        if assign_provider_base(client.clone(), name, namespace, instance, &providers).await? {
             return Ok(true);
         }
     }
@@ -162,33 +192,33 @@ pub async fn assign_provider(
     })
     .await?;
 
+    // Signal to the caller that we failed to assign a Provider.
     Ok(false)
 }
 
 /// Returns true if the reservation needs to be garbage collected.
 async fn check_prune(
     client: Client,
+    namespace: &str,
     provider: &Provider,
     slot: usize,
     reservation_name: &str,
 ) -> Result<bool, Error> {
-    let cm_api: Api<ConfigMap> = Api::namespaced(
-        client.clone(),
-        provider.metadata.namespace.as_deref().unwrap(),
-    );
-    let cm = match cm_api.get(&reservation_name).await {
+    // Start by getting the reservation ConfigMap.
+    let cm_api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
+    let data = match cm_api.get(&reservation_name).await {
         // Reservation exists, make sure it's not dangling.
-        Ok(cm) => cm,
+        Ok(cm) => match cm.data {
+            Some(data) => data,
+            // Malformed reservation is dangling, so delete it.
+            None => return Ok(true),
+        },
         // Reservation doesn't exist, so it can't be dangling.
         Err(kube::Error::Api(e)) if e.code == 404 => return Ok(false),
         // Error getting reservation ConfigMap.
         Err(e) => return Err(e),
     };
-    let data = match cm.data {
-        Some(data) => data,
-        // Malformed reservation is dangling, so delete it.
-        None => return Ok(true),
-    };
+
     // Extract the Mask owner properties from the ConfigMap.
     let (owner_name, owner_namespace, owner_uid) =
         match (data.get("name"), data.get("namespace"), data.get("uid")) {
@@ -197,11 +227,12 @@ async fn check_prune(
             // Malformed reservation is dangling, so delete it.
             _ => return Ok(true),
         };
+
     // Ensure the Mask still exists and is using the reservation.
     let mask_api: Api<Mask> = Api::namespaced(client, owner_namespace);
     match mask_api.get(owner_name).await {
         // Ensure the UID matches and the Mask is still using the reservation.
-        Ok(mask) => Ok(mask.meta().uid.as_ref().unwrap() != owner_uid
+        Ok(mask) => Ok(mask.metadata.uid.as_ref().unwrap() != owner_uid
             || !mask_uses_reservation(&mask, provider, slot)),
         // Owner Mask no longer exists. Garbage collect it.
         Err(kube::Error::Api(e)) if e.code == 404 => Ok(true),
@@ -213,14 +244,14 @@ async fn check_prune(
 /// Deletes dangling reservations that are no longer owned by a Mask.
 async fn prune(client: Client) -> Result<bool, Error> {
     let mut deleted = false;
-    let providers = list_active_providers(client.clone()).await?;
+    let providers = list_active_providers(client.clone(), None).await?;
     for provider in &providers {
         let name = provider.metadata.name.as_deref().unwrap();
         let namespace = provider.metadata.namespace.as_deref().unwrap();
         let cm_api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
         for slot in 0..provider.spec.max_slots {
             let reservation_name = format!("{}-{}", name, slot);
-            if !check_prune(client.clone(), provider, slot, &reservation_name).await? {
+            if !check_prune(client.clone(), namespace, provider, slot, &reservation_name).await? {
                 continue;
             }
             cm_api
@@ -243,6 +274,45 @@ fn mask_uses_reservation(instance: &Mask, provider: &Provider, slot: usize) -> b
                 && assigned.slot == slot
         }
     }
+}
+
+/// Returns a list of inactive slot numbers for the Provider.
+pub async fn list_inactive_slots(client: Client, provider: &Provider) -> Result<Vec<usize>, Error> {
+    let active_slots = list_active_slots(client, provider).await?;
+    Ok((0..provider.spec.max_slots)
+        .filter(|slot| !active_slots.contains(slot))
+        .collect())
+}
+
+/// Returns a list of active slot numbers for the Provider.
+pub async fn list_active_slots(client: Client, provider: &Provider) -> Result<Vec<usize>, Error> {
+    let provider_uid = provider.metadata.uid.as_deref().unwrap();
+    let cm_api: Api<ConfigMap> = Api::namespaced(
+        client.clone(),
+        provider.metadata.namespace.as_deref().unwrap(),
+    );
+    Ok(cm_api
+        .list(&Default::default())
+        .await?
+        .into_iter()
+        .map(|cm| cm.metadata)
+        .filter(|meta| {
+            meta.owner_references
+                .as_ref()
+                .map(|orefs| orefs.iter().any(|o| o.uid == provider_uid))
+                .unwrap_or(false)
+        })
+        .map(|meta| {
+            meta.name
+                .as_ref()
+                .unwrap()
+                .split('-')
+                .last()
+                .unwrap()
+                .parse::<usize>()
+                .unwrap()
+        })
+        .collect())
 }
 
 /// Creates the ConfigMap reserving a slot with the provider.

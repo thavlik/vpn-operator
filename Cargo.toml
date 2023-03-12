@@ -30,6 +30,7 @@ hyper = { version = "^0.14", features = ["server", "http1", "tcp"] }
 lazy_static = "^1.4"
 const_format = "0.2.30"
 uuid = { version = "1.3.0", features = ["v4"] }
+clap = { version = "4.1.8", features = ["derive"] }
 
 [build-dependencies]
 serde_yaml = "0.9"

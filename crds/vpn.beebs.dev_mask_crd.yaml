@@ -25,6 +25,13 @@ spec:
         description: Auto-generated derived type for MaskSpec via `CustomResource`
         properties:
           spec:
+            properties:
+              providers:
+                description: Optional list of providers to use at the exclusion of others. Omit the field if you are okay with being assigned any provider. These values correspond to the Provider resource's metadata.labels["vpn.beebs.dev/provider"]
+                items:
+                  type: string
+                nullable: true
+                type: array
             type: object
           status:
             nullable: true

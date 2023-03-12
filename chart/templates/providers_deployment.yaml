@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-operator
+  name: {{ .Release.Name }}-providers
   labels:
     chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
 spec:
   selector:
     matchLabels:
-      app: {{ .Release.Name }}-operator
+      app: {{ .Release.Name }}-providers
   template:
     metadata:
       labels:
-        app: {{ .Release.Name }}-operator
+        app: {{ .Release.Name }}-providers
     spec:
     {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -22,15 +22,20 @@ spec:
         - name: operator
           command:
             - /vpn-operator
+            - manage-providers
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           image: {{ .Values.image }}
-      {{- if .Values.prometheus }}
           env:
+            - name: RUST_BACKTRACE
+              value: full
+      {{- if .Values.prometheus }}
             - name: METRICS_PORT
               value: "8080"
+      {{- end }}
+      {{- if .Values.prometheus }}
           ports:
             - containerPort: 8080
               name: metrics
       {{- end }}
           resources:
-{{ toYaml .Values.resources | indent 12 }}
+{{ toYaml .Values.controllers.providers.resources | indent 12 }}

@@ -1,8 +1,7 @@
 use crate::types::*;
-use futures::{StreamExt, TryStreamExt};
 use kube::{
-    api::{ListParams, Patch, PatchParams, Resource},
-    core::{NamespaceResourceScope, WatchEvent},
+    api::{Patch, PatchParams, Resource},
+    core::NamespaceResourceScope,
     Api, Client, Error,
 };
 use serde::{de::DeserializeOwned, Serialize};

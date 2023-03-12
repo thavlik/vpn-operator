@@ -24,7 +24,6 @@ COPY src src
 RUN touch -a -m src/main.rs \
     && cargo build
 FROM debian:bullseye-slim
-ENV RUST_BACKTRACE=1
 WORKDIR /
 COPY --from=builder /vpn-operator/target/debug/vpn-operator .
 CMD ["/vpn-operator"]

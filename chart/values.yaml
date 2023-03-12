@@ -1,9 +1,17 @@
 image: thavlik/vpn-operator:latest
 imagePullPolicy: Always
-resources:
-  limits:
-    memory: 128Mi
-    cpu: 100m
 
 # Enable Prometheus metrics.
 prometheus: false
+
+controllers:
+  masks:
+    resources:
+      limits:
+        memory: 128Mi
+        cpu: 100m
+  providers:
+    resources:
+      limits:
+        memory: 128Mi
+        cpu: 100m

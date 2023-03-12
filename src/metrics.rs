@@ -3,12 +3,38 @@ use hyper::{
     service::{make_service_fn, service_fn},
     Body, Request, Response, Server,
 };
-use prometheus::{Counter, Encoder, Gauge, HistogramVec, TextEncoder};
+use prometheus::{Counter, CounterVec, Encoder, Gauge, HistogramVec, TextEncoder};
 
 use lazy_static::lazy_static;
-use prometheus::{labels, opts, register_counter, register_gauge, register_histogram_vec};
+use prometheus::{
+    labels, opts, register_counter, register_counter_vec, register_gauge, register_histogram_vec,
+};
 
 lazy_static! {
+    pub static ref MASK_RECONCILE_COUNTER: CounterVec = register_counter_vec!(
+        "vpno_mask_reconcile_counter",
+        "Number of reconciliations by the mask controller.",
+        &["name", "namespace"]
+    )
+    .unwrap();
+    static ref MASK_ACTION_COUNTER: CounterVec = register_counter_vec!(
+        "vpno_mask_action_counter",
+        "Number of actions taken by the mask controller.",
+        &["name", "namespace", "action"]
+    )
+    .unwrap();
+    pub static ref PROVIDER_RECONCILE_COUNTER: CounterVec = register_counter_vec!(
+        "vpno_provider_reconcile_counter",
+        "Number of reconciliations by the provider controller.",
+        &["name", "namespace"]
+    )
+    .unwrap();
+    static ref PROVIDER_ACTION_COUNTER: CounterVec = register_counter_vec!(
+        "vpno_provider_action_counter",
+        "Number of actions taken by the provider controller.",
+        &["name", "namespace", "action"]
+    )
+    .unwrap();
     static ref HTTP_COUNTER: Counter = register_counter!(opts!(
         "vpno_http_requests_total",
         "Number of HTTP requests made to the metrics server.",

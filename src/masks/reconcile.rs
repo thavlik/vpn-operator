@@ -10,6 +10,9 @@ use std::sync::Arc;
 use tokio::time::Duration;
 pub use vpn_types::*;
 
+#[cfg(metrics)]
+use crate::metrics::{MASK_ACTION_COUNTER, MASK_RECONCILE_COUNTER};
+
 use super::{
     actions::{self, owns_reservation},
     finalizer,
@@ -121,12 +124,22 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
     // Name of the Mask resource is used to name the subresources as well.
     let name = instance.name_any();
 
+    #[cfg(metrics)]
+    MASK_RECONCILE_COUNTER
+        .with_label_values(&[&name, &namespace])
+        .inc();
+
     // Read phase of reconciliation determines goal during the write phase.
     let action = determine_action(client.clone(), &name, &namespace, &instance).await?;
 
     if action != MaskAction::NoOp {
         println!("Mask {}/{} ACTION: {:?}", namespace, name, action);
     }
+
+    #[cfg(metrics)]
+    MASK_ACTION_COUNTER
+        .with_label_values(&[&name, &namespace, action.into()])
+        .inc();
 
     // Performs action as decided by the `determine_action` function.
     // This is the write phase of reconciliation.

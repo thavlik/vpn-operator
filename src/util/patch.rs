@@ -1,4 +1,3 @@
-use vpn_types::*;
 use kube::{
     api::{Patch, PatchParams, Resource},
     core::NamespaceResourceScope,
@@ -6,6 +5,7 @@ use kube::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::{clone::Clone, fmt::Debug};
+use vpn_types::*;
 
 pub trait Object<S: Status> {
     fn mut_status(&mut self) -> &mut S;

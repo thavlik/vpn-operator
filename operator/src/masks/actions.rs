@@ -289,11 +289,13 @@ pub async fn list_active_slots(client: Client, provider: &Provider) -> Result<Ve
         .into_iter()
         .map(|cm| cm.metadata)
         .filter(|meta| {
+            // Filter out any ConfigMaps that don't belong to the Provider.
             meta.owner_references
                 .as_ref()
                 .map_or(false, |orefs| orefs.iter().any(|o| o.uid == provider_uid))
         })
         .filter_map(|meta| {
+            // Extract the slot numbers and ignore any that are malformed.
             meta.name
                 .as_ref()
                 .unwrap()

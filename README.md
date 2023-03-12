@@ -135,5 +135,8 @@ Your application is responsible for monitoring the status of your `Mask` and kil
 
 Note: Some VPN services like SurfShark reserve the right to ban you for abusing their generous "unlimited devices" policies. In such cases, it's recommended to use a relatively low `spec.maxSlots` for the `Provider`.
 
+### Development
+Notes on the operator code itself can be found in [operator/README.md](operator/README.md).
+
 ## License
 All code in this repository is released under [MIT](LICENSE-MIT) / [Apache 2.0](LICENSE-Apache) dual license, which is extremely permissive. Please open an issue if somehow these terms are insufficient.

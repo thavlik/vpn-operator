@@ -139,6 +139,7 @@ pub struct AssignedProvider {
 pub enum MaskPhase {
     Pending,
     Active,
+    Waiting,
     ErrNoProvidersAvailable,
 }
 
@@ -149,6 +150,7 @@ impl std::str::FromStr for MaskPhase {
         match s {
             "Pending" => Ok(MaskPhase::Pending),
             "Active" => Ok(MaskPhase::Active),
+            "Waiting" => Ok(MaskPhase::Waiting),
             "ErrNoProvidersAvailable" => Ok(MaskPhase::ErrNoProvidersAvailable),
             _ => Err(()),
         }

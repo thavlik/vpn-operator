@@ -122,16 +122,30 @@ async fn assign_provider_base(
 }
 
 /// Assigns a new Provider to the Mask. Prunes and retries if necessary.
+/// Returns true if a Provider was assigned, false otherwise.
 pub async fn assign_provider(
     client: Client,
     name: &str,
     namespace: &str,
     instance: &Mask,
 ) -> Result<bool, Error> {
+    // See if there are any providers available.
+    if list_active_providers(client.clone()).await?.is_empty() {
+        // Reflect the error in the status.
+        patch_status(client, instance, |status| {
+            status.phase = Some(MaskPhase::ErrNoProvidersAvailable);
+            status.message = Some("No VPN providers available.".to_owned());
+        })
+        .await?;
+        // No need to prune.
+        return Ok(false);
+    }
+
     // Try to assign a provider.
     if assign_provider_base(client.clone(), name, namespace, instance).await? {
         return Ok(true);
     }
+
     // Remove any dangling reservations.
     if prune(client.clone()).await? {
         // One or more dangling reservations were removed,
@@ -140,12 +154,14 @@ pub async fn assign_provider(
             return Ok(true);
         }
     }
-    // Unable to find a Provider. Reflect the error in the status.
+
+    // Unable to find an empty slot with any Provider.
     patch_status(client, instance, |status| {
-        status.phase = Some(MaskPhase::ErrNoProvidersAvailable);
-        status.message = Some("No VPN providers with unused slots available.".to_owned());
+        status.phase = Some(MaskPhase::Waiting);
+        status.message = Some("Waiting on a slot from a Provider.".to_owned());
     })
     .await?;
+
     Ok(false)
 }
 

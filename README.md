@@ -101,7 +101,7 @@ spec:
 kubectl get mask -Aw
 ```
 
-5. The `Mask`'s status object contains a reference to the VPN credentials Secret created for it at `status.provider.secret`. Plug these values into your VPN containers (e.g. [gluetun](https://github.com/qdm12/gluetun)).
+5. The `Mask`'s status object contains a reference to the VPN credentials Secret created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. [gluetun](https://github.com/qdm12/gluetun)).
 
 ## Scaling
 While the controller code is fully capable of concurrent reconciliations, scaling is not as simple as increasing the number of replicas in the deployments. I have ideas for how to scale horizontally, so please open an issue if you encounter problems scaling vertically. This can done by adjusting your `values.yaml` file:

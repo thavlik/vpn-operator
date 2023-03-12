@@ -10,4 +10,6 @@ env:
         releaseName: vpn
         namespace: vpn
         values:
-          prometheus: true
+          prometheus:
+            expose: true
+            podMonitors: true

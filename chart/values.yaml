@@ -1,8 +1,15 @@
 image: thavlik/vpn-operator:latest
 imagePullPolicy: Always
 
-# Enable Prometheus metrics.
-prometheus: false
+# Prometheus metrics configuration.
+prometheus:
+  # Run the prometheus metrics server on the controllers.
+  expose: true
+
+  # Create PodMonitor resources for the controllers.
+  # This value may be false while `expose` is true if you
+  # want to scrape the controller pods with another method.
+  podMonitors: true
 
 controllers:
   masks:

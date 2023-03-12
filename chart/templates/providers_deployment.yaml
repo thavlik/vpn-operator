@@ -28,11 +28,9 @@ spec:
           env:
             - name: RUST_BACKTRACE
               value: full
-      {{- if .Values.prometheus }}
+      {{- if .Values.prometheus.exposed }}
             - name: METRICS_PORT
               value: "8080"
-      {{- end }}
-      {{- if .Values.prometheus }}
           ports:
             - containerPort: 8080
               name: metrics

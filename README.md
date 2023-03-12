@@ -12,7 +12,17 @@ kubectl apply -f crds/
 2. Install the vpn-operator helm chart:
 ```bash
 # Create your chart configuration file.
-echo "prometheus: false" > values.yaml
+cat <<EOF | echo "$(</dev/stdin)" > values.yaml
+# In this example, we're enabled prometheus metrics
+# for the controller but disabling PodMonitor creation.
+# This is what you would want to do if your cluster
+# has a custom method for scraping the pods' metrics.
+# PodMonitor is a Custom Resource from kube-prometheus:
+# https://github.com/prometheus-operator/kube-prometheus
+prometheus:
+  expose: true
+  podMonitors: false
+EOF
 
 # Install the chart into the `vpn` namespace.
 RELEASE_NAME=vpn

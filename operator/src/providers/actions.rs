@@ -1,10 +1,129 @@
-use crate::util::{patch::*, Error};
-use k8s_openapi::api::core::v1::Secret;
+use crate::util::{patch::*, merge, Error, MANAGER_NAME};
+use const_format::concatcp;
+use k8s_openapi::{
+    api::core::v1::{
+        Capabilities, Container, EmptyDirVolumeSource, EnvVar, EnvVarSource, Pod, PodSpec, Secret,
+        SecretKeySelector, SecurityContext, Volume, VolumeMount,
+    },
+    apimachinery::pkg::apis::meta::v1::Time,
+};
 use kube::{
-    api::{Api, DeleteParams, ListParams},
+    api::{Api, DeleteParams, ListParams, ObjectMeta, Resource},
     Client,
 };
+use lazy_static::lazy_static;
+use serde_json::Value;
+use std::collections::BTreeMap;
 use vpn_types::*;
+
+/// Image to use for the curl container. This is used to
+/// retrieve the initial/unmasked IP address for the pod
+/// during initialization.
+pub const CURL_IMAGE: &str = "curlimages/curl:7.88.1";
+
+/// The IP service to use for getting the public IP address.
+pub const IP_SERVICE: &str = "https://api.ipify.org";
+
+/// Name of the shared volume, used to share files between
+/// containers and detect when the VPN connected. Containers
+/// should mount this volume at `SHARED_PATH` and access
+/// the initial ip file at `IP_FILE_PATH` to know when the
+/// VPN finishes connecting.
+pub const SHARED_VOLUME_NAME: &str = "shared";
+
+/// Shared directory path.
+pub const SHARED_PATH: &str = "/shared";
+
+/// The file containing the unmasked IP address of the pod.
+/// This is written by an init container so the executor
+/// knows when the VPN is connected.
+pub const IP_FILE_PATH: &str = concatcp!(SHARED_PATH, "/ip");
+
+/// VPN sidecar image. Efforts were made to use a stock
+/// image with no modifications, as to maximize the
+/// modular paradigm of using sidecars.
+pub const DEFAULT_VPN_IMAGE: &str = "qmcgaw/gluetun:v3.32.0";
+
+/// The script used by the probe container to check if the
+/// VPN is connected. Requires the environment variables.
+const PROBE_SCRIPT: &str = "#!/bin/sh
+INITIAL_IP=$(cat $IP_FILE_PATH)
+echo \"Unmasked IP address is $INITIAL_IP\"
+IP=$(curl -s $IP_SERVICE)
+while [ \"$IP\" = \"$INITIAL_IP\" ]; do
+    sleep $SLEEP_TIME
+    IP=$(curl -s $IP_SERVICE)
+done
+echo \"VPN connected. Masked IP address: $IP\"";
+
+lazy_static! {
+    static ref SHARED_VOLUME_MOUNT: VolumeMount = VolumeMount {
+        name: SHARED_VOLUME_NAME.to_owned(),
+        mount_path: SHARED_PATH.to_owned(),
+        ..Default::default()
+    };
+    static ref DEFAULT_INIT_CONTAINER: Container = Container {
+        name: "init".to_owned(),
+        image: Some(CURL_IMAGE.to_owned()),
+        image_pull_policy: Some("IfNotPresent".to_owned()),
+        command: Some(
+            vec!["curl", "-o", IP_FILE_PATH, "-s", IP_SERVICE]
+                .into_iter()
+                .map(String::from)
+                .collect()
+        ),
+        volume_mounts: Some(vec![SHARED_VOLUME_MOUNT.clone()]),
+        ..Default::default()
+    };
+    static ref DEFAULT_VPN_CONTAINER: Container = Container {
+        name: "vpn".to_owned(),
+        image: Some(DEFAULT_VPN_IMAGE.to_owned()),
+        image_pull_policy: Some("IfNotPresent".to_owned()),
+        security_context: Some(SecurityContext {
+            capabilities: Some(Capabilities {
+                add: Some(vec!["NET_ADMIN".to_owned()]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    static ref DEFAULT_PROBE_CONTAINER: Container = Container {
+        name: "probe".to_owned(),
+        image: Some(CURL_IMAGE.to_owned()),
+        image_pull_policy: Some("IfNotPresent".to_owned()),
+        command: Some(
+            vec!["sh", "-c", "\"$PROBE_SCRIPT\""]
+                .into_iter()
+                .map(String::from)
+                .collect()
+        ),
+        env: Some(vec![
+            EnvVar {
+                name: "PROBE_SCRIPT".to_owned(),
+                value: Some(PROBE_SCRIPT.to_owned()),
+                ..Default::default()
+            },
+            EnvVar {
+                name: "IP_SERVICE".to_owned(),
+                value: Some(IP_SERVICE.to_owned()),
+                ..Default::default()
+            },
+            EnvVar {
+                name: "IP_FILE_PATH".to_owned(),
+                value: Some(IP_FILE_PATH.to_owned()),
+                ..Default::default()
+            },
+            EnvVar {
+                name: "SLEEP_TIME".to_owned(),
+                value: Some("10s".to_owned()),
+                ..Default::default()
+            },
+        ]),
+        volume_mounts: Some(vec![SHARED_VOLUME_MOUNT.clone()]),
+        ..Default::default()
+    };
+}
 
 /// Updates the Provider's phase to Pending, which indicates
 /// the resource made its initial appearance to the operator.
@@ -44,6 +163,7 @@ pub async fn secret_missing(
     Ok(())
 }
 
+/// Lists all Mask resource that are not pending deletion.
 async fn list_masks(client: Client) -> Result<Vec<Mask>, Error> {
     let api: Api<Mask> = Api::all(client);
     Ok(api
@@ -57,9 +177,13 @@ async fn list_masks(client: Client) -> Result<Vec<Mask>, Error> {
 
 /// Returns true if the Mask resource is assigned this Provider.
 fn mask_uses_provider(name: &str, namespace: &str, uid: &str, mask: &Mask) -> bool {
-    match mask.status.as_ref().map(|status| &status.provider) {
+    match mask
+        .status
+        .as_ref()
+        .map_or(None, |status| status.provider.as_ref())
+    {
         // Mask is assigned a Provider.
-        Some(Some(provider)) => {
+        Some(provider) => {
             // Check if the assigned Provider matches the given one.
             provider.name == name && provider.namespace == namespace && provider.uid == uid
         }
@@ -68,6 +192,192 @@ fn mask_uses_provider(name: &str, namespace: &str, uid: &str, mask: &Mask) -> bo
     }
 }
 
+/// Update the status object to show the verification is in progress.
+pub async fn verify_progress(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    start_time: Option<Time>,
+) -> Result<(), Error> {
+    Ok(())
+}
+
+/// Update the status object to show an error message was
+/// encountered during verification.
+pub async fn verify_failed(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    message: String,
+) -> Result<(), Error> {
+    Ok(())
+}
+
+/// Deletes the verification pod.
+pub async fn delete_verify_pod(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
+    let api: Api<Pod> = Api::namespaced(client, namespace);
+    match api.delete(name, &DeleteParams::default()).await {
+        // Pod was deleted.
+        Ok(_) => Ok(()),
+        // Pod does not exist.
+        Err(kube::Error::Api(e)) if e.code == 404 => Ok(()),
+        // Error deleting Pod.
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Merges the container spec with the given overrides.
+fn merge_containers(container: Container, overrides: Value) -> Result<Container, Error> {
+    let mut val = serde_json::to_value(&container)?;
+    //json_patch::merge(&mut val, overrides);
+    merge(&mut val, overrides);
+    Ok(serde_json::from_value(val)?)
+}
+
+/// Creates the container spec for the init container that
+/// retrieves the unmasked public IP address and writes it
+/// to the shared volume. This is done on startup so that
+/// the executor will truly know when it's okay to start
+/// downloading the video and/or thumbnail.
+fn get_init_container(overrides: Option<&Value>) -> Result<Container, Error> {
+    let container = DEFAULT_INIT_CONTAINER.clone();
+    match overrides {
+        Some(overrides) => merge_containers(container, overrides.clone()),
+        None => Ok(container),
+    }
+}
+
+/// Returns the container the probes the external IP address
+/// and exits with code zero when it changes or exits nonzero
+/// if it fails to change before the timeout.
+fn get_probe_container(overrides: Option<&Value>) -> Result<Container, Error> {
+    let container = DEFAULT_PROBE_CONTAINER.clone();
+    match overrides {
+        Some(overrides) => merge_containers(container, overrides.clone()),
+        None => Ok(container),
+    }
+}
+
+/// Returns the container that connects to the VPN.
+fn get_vpn_container(
+    namespace: &str,
+    provider: &Provider,
+    secret: &Secret,
+    overrides: Option<&Value>,
+) -> Result<Container, Error> {
+    let secret_name = secret.metadata.name.as_deref().unwrap();
+    let mut container = DEFAULT_VPN_CONTAINER.clone();
+    container.env = secret.data.as_ref().map(|data| {
+        data.iter()
+            .map(|(key, _)| EnvVar {
+                name: key.clone(),
+                value_from: Some(EnvVarSource {
+                    secret_key_ref: Some(SecretKeySelector {
+                        name: Some(secret_name.to_owned()),
+                        key: key.clone(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .collect()
+    });
+    match overrides {
+        Some(overrides) => merge_containers(container, overrides.clone()),
+        None => Ok(container),
+    }
+}
+
+/// Returns a Pod resource that verifies the VPN credentials work.
+fn verify_pod(
+    name: &str,
+    namespace: &str,
+    instance: &Provider,
+    secret: &Secret,
+) -> Result<Pod, Error> {
+    let overrides = instance
+        .spec
+        .verify
+        .as_ref()
+        .map_or(None, |v| v.overrides.as_ref());
+    let container_overrides = overrides.map_or(None, |o| o.containers.as_ref());
+
+    // Assemble the container specs with the overrides.
+    let init_container = get_init_container(container_overrides.map_or(None, |c| c.init.as_ref()))?;
+    let vpn_container = get_vpn_container(
+        namespace,
+        instance,
+        secret,
+        container_overrides.map_or(None, |c| c.vpn.as_ref()),
+    )?;
+    let probe_container =
+        get_probe_container(container_overrides.map_or(None, |c| c.probe.as_ref()))?;
+    
+    // Assemble the containers into a pod.
+    let pod = Pod {
+        metadata: ObjectMeta {
+            name: Some(name.to_owned()),
+            namespace: Some(namespace.to_owned()),
+            labels: Some({
+                // Add a label to the pod so that we can easily find it.
+                let mut labels: BTreeMap<String, String> = BTreeMap::new();
+                labels.insert("app".to_owned(), MANAGER_NAME.to_owned());
+                labels
+            }),
+            owner_references: Some(vec![instance.controller_owner_ref(&()).unwrap()]),
+            ..Default::default()
+        },
+        spec: Some(PodSpec {
+            restart_policy: Some("Never".to_owned()),
+            init_containers: Some(vec![init_container]),
+            containers: vec![vpn_container, probe_container],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    // Apply overrides to the pod if necessary.
+    match overrides.map_or(None, |o| o.pod.as_ref()) {
+        // No pod override requested.
+        _ => Ok(pod),
+        // Merge the overriden values into the resource.
+        Some(pod_template) => {
+            let mut val = serde_json::to_value(&pod)?;
+            //json_patch::merge(&mut val, pod_template);
+            merge(&mut val, pod_template.clone());
+            Ok(serde_json::from_value(val)?)
+        }
+    }
+}
+
+/// Creates a pod that verifies the VPN credentials work.
+pub async fn verified(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    end_time: Time,
+) -> Result<(), Error> {
+    Ok(())
+}
+
+/// Creates a pod that verifies the VPN credentials work.
+pub async fn create_verify_pod(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    instance: &Provider,
+) -> Result<(), Error> {
+    let secret_api: Api<Secret> = Api::namespaced(client.clone(), namespace);
+    let secret = secret_api.get(&instance.spec.secret).await?;
+    let pod = verify_pod(name, namespace, instance, &secret)?;
+    // TODO: merge the overrides into the pod.
+    let api: Api<Pod> = Api::namespaced(client, namespace);
+    api.create(&Default::default(), &pod).await?;
+    Ok(())
+}
+
+/// Unassigns all Mask resources that are assigned to this Provider.
 pub async fn unassign_all(
     client: Client,
     name: &str,

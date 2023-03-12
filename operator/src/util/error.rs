@@ -10,8 +10,9 @@ pub enum Error {
         source: kube::Error,
         backtrace: Backtrace,
     },
-    /// Error in user input or Mask resource definition, typically missing fields.
-    #[error("Invalid Mask CRD: {0}")]
+
+    /// Usually an error in a Mask, Provider, or a Provider's secret.
+    #[error("Invalid user input: {0}")]
     UserInputError(String),
 
     /// Chrono date parsing error
@@ -25,5 +26,11 @@ pub enum Error {
     OutOfRangeError {
         #[from]
         source: chrono::OutOfRangeError,
+    },
+
+    #[error("Json error: {source}")]
+    JsonError {
+        #[from]
+        source: serde_json::Error,
     },
 }

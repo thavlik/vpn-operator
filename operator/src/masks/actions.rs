@@ -65,21 +65,15 @@ async fn list_active_providers(
         .filter(|p| {
             p.status
                 .as_ref()
-                .map(|s| s.phase == Some(ProviderPhase::Active))
-                .unwrap_or(false)
+                .map_or(false, |s| s.phase == Some(ProviderPhase::Active))
         });
     if let Some(ref filter) = filter {
         return Ok(providers
             .filter(|p| {
-                p.metadata
-                    .labels
-                    .as_ref()
-                    .map(|l| {
-                        l.get(PROVIDER_NAME_LABEL)
-                            .map(|v| filter.contains(v))
-                            .unwrap_or(false)
-                    })
-                    .unwrap_or(false)
+                p.metadata.labels.as_ref().map_or(false, |l| {
+                    l.get(PROVIDER_NAME_LABEL)
+                        .map_or(false, |v| filter.contains(v))
+                })
             })
             .collect());
     }
@@ -297,8 +291,7 @@ pub async fn list_active_slots(client: Client, provider: &Provider) -> Result<Ve
         .filter(|meta| {
             meta.owner_references
                 .as_ref()
-                .map(|orefs| orefs.iter().any(|o| o.uid == provider_uid))
-                .unwrap_or(false)
+                .map_or(false, |orefs| orefs.iter().any(|o| o.uid == provider_uid))
         })
         .map(|meta| {
             meta.name
@@ -494,8 +487,7 @@ pub async fn owns_reservation(
                     .metadata
                     .owner_references
                     .as_ref()
-                    .map(|ors| ors.iter().any(|or| &or.uid == provider_uid))
-                    .unwrap_or(false)
+                    .map_or(false, |ors| ors.iter().any(|or| &or.uid == provider_uid))
                 {
                     // Reservation ConfigMap is not owned by the assigned provider.
                     return Ok(false);

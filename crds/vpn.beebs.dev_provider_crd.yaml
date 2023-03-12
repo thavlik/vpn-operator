@@ -38,6 +38,47 @@ spec:
               secret:
                 description: Reference to a Secret resource containing the env vars that will be injected into the gluetun container.
                 type: string
+              verify:
+                description: VPN service verification options, used to ensure the credentials are valid before allowing Masks to use them.
+                nullable: true
+                properties:
+                  overrides:
+                    description: Optional customization for the verification pod. Use this to set the image, networking, etc. It is merged onto the controller-created Pod.
+                    nullable: true
+                    properties:
+                      containers:
+                        nullable: true
+                        properties:
+                          init:
+                            description: Customization for the init container that gets the initial IP address. The structure of this field corresponds to the Container schema. Validation is disabled for both peformance and simplicity.
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
+                          probe:
+                            description: Customization for the container that checks the public IP address until it differs from the initial. The structure of this field corresponds to the Container schema. Validation is disabled for both peformance and simplicity.
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
+                          vpn:
+                            description: Customization for the gluetun container that connects to the VPN. The structure of this field corresponds to the Container schema. Validation is disabled for both peformance and simplicity.
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
+                        required:
+                        - init
+                        - probe
+                        - vpn
+                        type: object
+                      pod:
+                        description: The structure of this field corresponds to the Pod schema. Validation is disabled for both peformance and simplicity.
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                    required:
+                    - pod
+                    type: object
+                  skip:
+                    description: If true, credentials verification is skipped entirely.
+                    type: boolean
+                required:
+                - skip
+                type: object
             required:
             - maxSlots
             - secret
@@ -55,15 +96,21 @@ spec:
                 description: Timestamp of when the status object was last updated.
                 nullable: true
                 type: string
+              lastVerified:
+                description: Timestamp of when the credentials were last verified.
+                nullable: true
+                type: string
               message:
                 description: A human-readable message indicating details about why the Provider is in this phase.
                 nullable: true
                 type: string
               phase:
-                description: The current phase of the Provider.
+                description: A short description of the Provider's current state.
                 enum:
                 - Pending
                 - ErrSecretNotFound
+                - Verifying
+                - ErrVerifyFailed
                 - Active
                 nullable: true
                 type: string

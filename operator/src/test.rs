@@ -191,8 +191,8 @@ async fn wait_for_err_no_providers(
     while let Some(event) = stream.try_next().await? {
         match event {
             WatchEvent::Added(m) | WatchEvent::Modified(m) => {
-                match m.status.as_ref().map(|status| status.phase) {
-                    Some(Some(MaskPhase::ErrNoProviders)) => {
+                match m.status.as_ref().map_or(None, |status| status.phase) {
+                    Some(MaskPhase::ErrNoProviders) => {
                         return Ok(());
                     }
                     _ => continue,

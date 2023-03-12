@@ -1,6 +1,7 @@
 use chrono::Utc;
 use futures::stream::StreamExt;
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::{
     api::ListParams, client::Client, runtime::controller::Action, runtime::Controller, Api,
     Resource, ResourceExt,
@@ -81,6 +82,18 @@ enum ProviderAction {
     /// Set the `Provider` resource status.phase to ErrSecretNotFound.
     SecretNotFound(String),
 
+    /// Create a glueten pod and verify that the external IP changes.
+    Verify,
+
+    /// Set the status to Verifying.
+    Verifying { start_time: Option<Time> },
+
+    /// Set the status to Verified.
+    Verified { end_time: Time },
+
+    /// Set the status to ErrVerifyFailed.
+    VerifyFailed(String),
+
     /// Set the `Provider` resource status.phase to Active.
     Active { active_slots: usize },
 
@@ -150,12 +163,15 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             Ok(Action::requeue(Duration::ZERO))
         }
         ProviderAction::Delete => {
+            // Delete the verification pod.
+            actions::delete_verify_pod(client.clone(), &name, &namespace).await?;
+
             // Delete Secrets in namespaces that use this `Provider`.
             // This will prevent `Masks` from continuing to use the credentials
             // assigned to them by this `Provider`.
             actions::unassign_all(client.clone(), &name, &namespace, &instance).await?;
 
-            // Remove the finalizer, which will allow the Mask resource to be deleted.
+            // Remove the finalizer, which will allow the Provider resource to be deleted.
             finalizer::delete(client, &name, &namespace).await?;
 
             // No need to requeue as the resource is being deleted.
@@ -166,6 +182,46 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             actions::secret_missing(client, &instance, &secret_name).await?;
 
             // Requeue after a while if the resource doesn't change.
+            Ok(Action::requeue(PROBE_INTERVAL))
+        }
+        ProviderAction::Verify => {
+            // Ensure the finalizer is present on the `Provider` resource.
+            finalizer::add(client.clone(), &name, &namespace).await?;
+
+            // Create the verification pod.
+            actions::create_verify_pod(client.clone(), &name, &namespace, &instance).await?;
+
+            // Indicate that verification is in progress.
+            actions::verify_progress(client, &name, &namespace, None).await?;
+
+            // Requeue after a short delay to allow the verification time to complete.
+            Ok(Action::requeue(PROBE_INTERVAL))
+        }
+        ProviderAction::Verifying { start_time } => {
+            // Post the progress to the status object.
+            actions::verify_progress(client, &name, &namespace, start_time).await?;
+
+            // Requeue after a short delay to allow the verification time to complete.
+            Ok(Action::requeue(PROBE_INTERVAL))
+        }
+        ProviderAction::VerifyFailed(message) => {
+            // Update the phase of the `Provider` resource to Verified.
+            actions::verify_failed(client.clone(), &name, &namespace, message).await?;
+
+            // Delete the verification pod so it can be recreated.
+            actions::delete_verify_pod(client, &name, &namespace).await?;
+
+            // Requeue after a delay so the user has time to see the error phase.
+            Ok(Action::requeue(PROBE_INTERVAL))
+        }
+        ProviderAction::Verified { end_time } => {
+            // Update the phase of the `Provider` resource to Verified.
+            actions::verified(client.clone(), &name, &namespace, end_time).await?;
+
+            // Delete the verification pod.
+            actions::delete_verify_pod(client, &name, &namespace).await?;
+
+            // Requeue after a short delay.
             Ok(Action::requeue(PROBE_INTERVAL))
         }
         ProviderAction::Active { active_slots } => {
@@ -290,8 +346,7 @@ async fn count_reservations(
             cm.metadata
                 .owner_references
                 .as_ref()
-                .map(|ors| ors.iter().any(|or| or.uid == uid))
-                .unwrap_or(false)
+                .map_or(false, |ors| ors.iter().any(|or| or.uid == uid))
         })
         .collect::<Vec<_>>();
 

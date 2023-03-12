@@ -1,3 +1,4 @@
+use super::MANAGER_NAME;
 use kube::{
     api::{Patch, PatchParams, Resource},
     core::NamespaceResourceScope,
@@ -76,6 +77,6 @@ where
     let namespace = instance.meta().namespace.as_deref().unwrap();
     let api: Api<T> = Api::namespaced(client, namespace);
     Ok(api
-        .patch_status(name, &PatchParams::apply("controller"), &patch)
+        .patch_status(name, &PatchParams::apply(MANAGER_NAME), &patch)
         .await?)
 }

@@ -46,12 +46,12 @@ spec:
                 nullable: true
                 type: string
               phase:
-                description: The current phase of the Mask.
+                description: A short description of the Mask's current state.
                 enum:
                 - Pending
-                - Active
                 - Waiting
                 - ErrNoProviders
+                - Active
                 nullable: true
                 type: string
               provider:
@@ -59,21 +59,21 @@ spec:
                 nullable: true
                 properties:
                   name:
-                    description: Name of the Provider resource.
+                    description: Name of the assigned Provider resource.
                     type: string
                   namespace:
-                    description: Namespace of the Provider resource.
+                    description: Namespace of the assigned Provider resource.
                     type: string
                   secret:
                     description: Name of the Secret resource which contains environment variables to be injected into the gluetun container. The controller will create this secret in the same namespace as the Mask resource. Its contents mirror the contents of the Provider's secret.
                     type: string
                   slot:
-                    description: User index assigned to this Mask. This value must be less than the Provider's spec.maxClients, and is used to index the ConfigMap that reserves the connection.
+                    description: Slot index assigned to this Mask. This value must be less than the Provider's spec.maxClients, and is used to index the ConfigMap that reserves the slot.
                     format: uint
                     minimum: 0.0
                     type: integer
                   uid:
-                    description: UID of the Provider resource. Used to ensure the reference is valid if case a Provider resource is deleted and recreated with the same name.
+                    description: UID of the assigned Provider resource. Used to ensure the reference is valid if case a Provider resource is deleted and recreated with the same name.
                     type: string
                 required:
                 - name

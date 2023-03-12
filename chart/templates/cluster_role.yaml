@@ -9,6 +9,7 @@ rules:
     resources:
       - secrets
       - configmaps
+      - pods
     verbs:
       - get
       - create

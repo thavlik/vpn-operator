@@ -121,7 +121,7 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
     let action = determine_action(client.clone(), &name, &namespace, &instance).await?;
 
     if action != ProviderAction::NoOp {
-        println!("Provider {}/{} ACTION: {:?}", namespace, name, action);
+        println!("{}/{} ACTION: {:?}", namespace, name, action);
     }
 
     #[cfg(metrics)]

@@ -132,7 +132,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
     let action = determine_action(client.clone(), &name, &namespace, &instance).await?;
 
     if action != MaskAction::NoOp {
-        println!("Mask {}/{} ACTION: {:?}", namespace, name, action);
+        println!("{}/{} ACTION: {:?}", namespace, name, action);
     }
 
     #[cfg(metrics)]

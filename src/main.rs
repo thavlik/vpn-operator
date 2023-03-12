@@ -48,12 +48,8 @@ async fn run_with_metrics(client: Client, port: u16) {
 async fn run_controller(client: Client) {
     let cli = Cli::parse();
     match cli.command {
-        Some(Command::ManageProviders) => providers::run(client)
-            .await
-            .unwrap(),
-        Some(Command::ManageMasks) => masks::run(client)
-            .await
-            .unwrap(),
+        Some(Command::ManageProviders) => providers::run(client).await.unwrap(),
+        Some(Command::ManageMasks) => masks::run(client).await.unwrap(),
         None => {
             println!("Please choose a subcommand.");
             std::process::exit(1);

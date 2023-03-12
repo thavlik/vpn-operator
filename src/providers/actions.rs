@@ -5,6 +5,7 @@ use kube::{
     Client,
 };
 use vpn_types::*;
+use crate::util::patch::*;
 
 /// Updates the Provider's phase to Pending, which indicates
 /// the resource made its initial appearance to the operator.

@@ -7,7 +7,7 @@ use kube::{
 use std::collections::BTreeMap;
 use vpn_types::*;
 
-use crate::util::{PROVIDER_NAME_LABEL, PROVIDER_UID_LABEL};
+use crate::util::{patch::*, PROVIDER_NAME_LABEL, PROVIDER_UID_LABEL};
 
 /// Updates the Provider's phase to Pending, which indicates
 /// the resource made its initial appearance to the operator.

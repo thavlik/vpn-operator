@@ -1,5 +1,7 @@
 use std::backtrace::Backtrace;
 
+pub mod patch;
+
 /// Name of the kubernetes resource finalizer field.
 pub const FINALIZER_NAME: &str = "vpn.beebs.dev/finalizer";
 

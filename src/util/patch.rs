@@ -1,4 +1,4 @@
-use crate::types::*;
+use vpn_types::*;
 use kube::{
     api::{Patch, PatchParams, Resource},
     core::NamespaceResourceScope,

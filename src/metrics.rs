@@ -9,46 +9,50 @@ use lazy_static::lazy_static;
 use prometheus::{
     labels, opts, register_counter, register_counter_vec, register_gauge, register_histogram_vec,
 };
+use const_format::concatcp;
+
+/// The prefix to add to all the prometheus metrics keys.
+const METRICS_PREFIX: &str = "vpno_";
 
 lazy_static! {
     pub static ref MASK_RECONCILE_COUNTER: CounterVec = register_counter_vec!(
-        "vpno_mask_reconcile_counter",
+        concatcp!(METRICS_PREFIX, "mask_reconcile_counter"),
         "Number of reconciliations by the mask controller.",
         &["name", "namespace"]
     )
     .unwrap();
     static ref MASK_ACTION_COUNTER: CounterVec = register_counter_vec!(
-        "vpno_mask_action_counter",
+        concatcp!(METRICS_PREFIX, "mask_action_counter"),
         "Number of actions taken by the mask controller.",
         &["name", "namespace", "action"]
     )
     .unwrap();
     pub static ref PROVIDER_RECONCILE_COUNTER: CounterVec = register_counter_vec!(
-        "vpno_provider_reconcile_counter",
+        concatcp!(METRICS_PREFIX, "provider_reconcile_counter"),
         "Number of reconciliations by the provider controller.",
         &["name", "namespace"]
     )
     .unwrap();
     static ref PROVIDER_ACTION_COUNTER: CounterVec = register_counter_vec!(
-        "vpno_provider_action_counter",
+        concatcp!(METRICS_PREFIX, "provider_action_counter"),
         "Number of actions taken by the provider controller.",
         &["name", "namespace", "action"]
     )
     .unwrap();
     static ref HTTP_COUNTER: Counter = register_counter!(opts!(
-        "vpno_http_requests_total",
+        concatcp!(METRICS_PREFIX, "http_requests_total"),
         "Number of HTTP requests made to the metrics server.",
         labels! {"handler" => "all",}
     ))
     .unwrap();
     static ref HTTP_BODY_GAUGE: Gauge = register_gauge!(opts!(
-        "vpno_http_response_size_bytes",
+        concatcp!(METRICS_PREFIX, "http_response_size_bytes"),
         "Metrics server HTTP response sizes in bytes.",
         labels! {"handler" => "all",}
     ))
     .unwrap();
     static ref HTTP_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "vpno_http_request_duration_seconds",
+        concatcp!(METRICS_PREFIX, "http_request_duration_seconds"),
         "Metrics server HTTP request latencies in seconds.",
         &["handler"]
     )

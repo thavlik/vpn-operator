@@ -2,11 +2,11 @@ use std::time::Duration;
 
 pub mod patch;
 
-mod merge;
 mod error;
+mod merge;
 
 pub use error::*;
-pub use merge::merge;
+pub use merge::deep_merge;
 
 /// The default interval for requeuing a managed resource.
 pub const PROBE_INTERVAL: Duration = Duration::from_secs(12);

@@ -1,4 +1,4 @@
-use crate::util::{patch::*, merge, Error, MANAGER_NAME};
+use crate::util::{deep_merge, patch::*, Error, MANAGER_NAME};
 use const_format::concatcp;
 use k8s_openapi::{
     api::core::v1::{
@@ -229,8 +229,7 @@ pub async fn delete_verify_pod(client: Client, name: &str, namespace: &str) -> R
 /// Merges the container spec with the given overrides.
 fn merge_containers(container: Container, overrides: Value) -> Result<Container, Error> {
     let mut val = serde_json::to_value(&container)?;
-    //json_patch::merge(&mut val, overrides);
-    merge(&mut val, overrides);
+    deep_merge(&mut val, overrides);
     Ok(serde_json::from_value(val)?)
 }
 
@@ -313,7 +312,7 @@ fn verify_pod(
     )?;
     let probe_container =
         get_probe_container(container_overrides.map_or(None, |c| c.probe.as_ref()))?;
-    
+
     // Assemble the containers into a pod.
     let pod = Pod {
         metadata: ObjectMeta {
@@ -344,8 +343,7 @@ fn verify_pod(
         // Merge the overriden values into the resource.
         Some(pod_template) => {
             let mut val = serde_json::to_value(&pod)?;
-            //json_patch::merge(&mut val, pod_template);
-            merge(&mut val, pod_template.clone());
+            deep_merge(&mut val, pod_template.clone());
             Ok(serde_json::from_value(val)?)
         }
     }

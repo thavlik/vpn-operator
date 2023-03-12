@@ -299,7 +299,7 @@ pub async fn list_active_slots(client: Client, provider: &Provider) -> Result<Ve
                 .unwrap()
                 .split('-')
                 .last()
-                .unwrap()
+                .map(|slot| slot.parse::<usize>())
                 .parse::<usize>()
                 .unwrap()
         })

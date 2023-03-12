@@ -36,7 +36,7 @@ helm install \
 ```
 
 ## Usage
-1. Create a `Provider` resource and secret with your VPN credentials:
+1. Create a `Provider` resource and credentials `Secret` with your VPN credentials:
 ```yaml
 apiVersion: v1
 kind: Secret

@@ -9,7 +9,7 @@ This operator simplifies the process of hiding your pods behind one or more VPN 
 ```bash
 kubectl apply -f crds/
 ```
-2. Install the vpn-operator helm chart:
+2. Install the vpn-operator [helm chart](https://helm.sh/):
 ```bash
 # Create your chart configuration file.
 cat <<EOF | echo "$(</dev/stdin)" > values.yaml

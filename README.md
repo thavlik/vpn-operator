@@ -13,7 +13,7 @@ kubectl apply -f crds/
 ```bash
 # Create your chart configuration file.
 cat <<EOF | echo "$(</dev/stdin)" > values.yaml
-# In this example, we're enabled prometheus metrics
+# In this example, we're enabling prometheus metrics
 # for the controller but disabling PodMonitor creation.
 # This is what you would want to do if your cluster
 # has a custom method for scraping the pods' metrics.

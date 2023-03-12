@@ -25,20 +25,21 @@ pub async fn run(client: Client) -> Result<(), Error> {
 
     // Preparation of resources used by the `kube_runtime::Controller`
     let crd_api: Api<Mask> = Api::all(client.clone());
-    let context: Arc<ContextData> = Arc::new(ContextData::new(client));
-
+    let context: Arc<ContextData> = Arc::new(ContextData::new(client.clone()));
+    
     // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
     // It requires the following information:
     // - `kube::Api<T>` this controller "owns". In this case, `T = Mask`, as this controller owns the `Mask` resource,
     // - `kube::api::ListParams` to select the `Mask` resources with. Can be used for Mask filtering `Mask` resources before reconciliation,
     // - `reconcile` function with reconciliation logic to be called each time a resource of `Mask` kind is created/updated/deleted,
     // - `on_error` function to call whenever reconciliation fails.
-    Controller::new(crd_api.clone(), ListParams::default())
+    Controller::new(crd_api, ListParams::default())
+        .owns(Api::<Secret>::all(client), ListParams::default())
         .run(reconcile, on_error, context)
         .for_each(|reconciliation_result| async move {
             match reconciliation_result {
-                Ok(mask_resource) => {
-                    println!("Reconciliation successful. Resource: {:?}", mask_resource);
+                Ok(_mask_resource) => {
+                    //println!("Reconciliation successful. Resource: {:?}", mask_resource);
                 }
                 Err(reconciliation_err) => {
                     eprintln!("Reconciliation error: {:?}", reconciliation_err)

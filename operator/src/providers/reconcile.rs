@@ -30,15 +30,16 @@ pub async fn run(client: Client) -> Result<(), Error> {
     // - `kube::api::ListParams` to select the `Provider` resources with. Can be used for Provider filtering `Provider` resources before reconciliation,
     // - `reconcile` function with reconciliation logic to be called each time a resource of `Provider` kind is created/updated/deleted,
     // - `on_error` function to call whenever reconciliation fails.
-    Controller::new(crd_api.clone(), ListParams::default())
+    Controller::new(crd_api, ListParams::default())
+        .owns(Api::<ConfigMap>::all(client), ListParams::default())
         .run(reconcile, on_error, context)
         .for_each(|reconciliation_result| async move {
             match reconciliation_result {
-                Ok(provider_resource) => {
-                    println!(
-                        "Reconciliation successful. Resource: {:?}",
-                        provider_resource
-                    );
+                Ok(_provider_resource) => {
+                    //println!(
+                    //    "Reconciliation successful. Resource: {:?}",
+                    //    provider_resource
+                    //);
                 }
                 Err(reconciliation_err) => {
                     eprintln!("Reconciliation error: {:?}", reconciliation_err)

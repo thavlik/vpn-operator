@@ -8,6 +8,9 @@ use kube::{
 use std::sync::Arc;
 use tokio::time::Duration;
 
+#[cfg(metrics)]
+use crate::metrics::{PROVIDER_ACTION_COUNTER, PROVIDER_RECONCILE_COUNTER};
+
 use super::{actions, finalizer};
 use crate::util::{Error, FINALIZER_NAME};
 pub use vpn_types::*;

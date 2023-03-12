@@ -17,9 +17,7 @@ use super::{
     actions::{self, owns_reservation},
     finalizer,
 };
-use crate::util::Error;
-
-const PROBE_INTERVAL: Duration = Duration::from_secs(10);
+use crate::util::{Error, PROBE_INTERVAL};
 
 /// Entrypoint for the `Mask` controller.
 pub async fn run(client: Client) -> Result<(), Error> {
@@ -163,7 +161,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             // Assign a new provider to the Mask.
             if !actions::assign_provider(client.clone(), &name, &namespace, &instance).await? {
                 // Failed to assign a provider. Wait a bit and retry.
-                return Ok(Action::requeue(Duration::from_secs(3)));
+                return Ok(Action::requeue(PROBE_INTERVAL));
             }
 
             // Requeue immediately to set the phase to "Active".
@@ -186,8 +184,8 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             // Update the phase to Active.
             actions::active(client.clone(), &instance).await?;
 
-            // Resource is fully reconciled. Requeue after a short delay.
-            Ok(Action::requeue(Duration::from_secs(10)))
+            // Resource is fully reconciled.
+            Ok(Action::requeue(PROBE_INTERVAL))
         }
         MaskAction::CreateSecret => {
             // Create the credentials env secret in the Mask's namespace.
@@ -197,7 +195,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             Ok(Action::requeue(Duration::ZERO))
         }
         // The resource is already in desired state, do nothing and re-check after 10 seconds
-        MaskAction::NoOp => Ok(Action::requeue(Duration::from_secs(10))),
+        MaskAction::NoOp => Ok(Action::requeue(PROBE_INTERVAL)),
     }
 }
 

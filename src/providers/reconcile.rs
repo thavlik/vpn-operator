@@ -12,10 +12,9 @@ use tokio::time::Duration;
 use crate::metrics::{PROVIDER_ACTION_COUNTER, PROVIDER_RECONCILE_COUNTER};
 
 use super::{actions, finalizer};
-use crate::util::{Error, FINALIZER_NAME};
+use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
 pub use vpn_types::*;
 
-const PROBE_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Entrypoint for the `Provider` controller.
 pub async fn run(client: Client) -> Result<(), Error> {
@@ -167,17 +166,17 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             actions::secret_missing(client, &instance, &secret_name).await?;
 
             // Requeue after a while if the resource doesn't change.
-            Ok(Action::requeue(Duration::from_secs(3)))
+            Ok(Action::requeue(PROBE_INTERVAL))
         }
         ProviderAction::Active { active_slots } => {
             // Update the phase of the `Provider` resource to Active.
             actions::active(client, &instance, active_slots).await?;
 
             // Requeue after a short delay.
-            Ok(Action::requeue(Duration::from_secs(2)))
+            Ok(Action::requeue(PROBE_INTERVAL))
         }
         // The resource is already in desired state, do nothing and re-check after 10 seconds
-        ProviderAction::NoOp => Ok(Action::requeue(Duration::from_secs(10))),
+        ProviderAction::NoOp => Ok(Action::requeue(PROBE_INTERVAL)),
     }
 }
 

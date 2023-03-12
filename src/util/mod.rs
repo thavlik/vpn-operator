@@ -1,6 +1,9 @@
-use std::backtrace::Backtrace;
+use std::{backtrace::Backtrace, time::Duration};
 
 pub mod patch;
+
+/// The default interval for requeuing a managed resource.
+pub const PROBE_INTERVAL: Duration = Duration::from_secs(12);
 
 /// Name of the kubernetes resource finalizer field.
 pub const FINALIZER_NAME: &str = "vpn.beebs.dev/finalizer";

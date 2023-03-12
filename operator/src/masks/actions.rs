@@ -293,15 +293,14 @@ pub async fn list_active_slots(client: Client, provider: &Provider) -> Result<Ve
                 .as_ref()
                 .map_or(false, |orefs| orefs.iter().any(|o| o.uid == provider_uid))
         })
-        .map(|meta| {
+        .filter_map(|meta| {
             meta.name
                 .as_ref()
                 .unwrap()
                 .split('-')
                 .last()
-                .map(|slot| slot.parse::<usize>())
-                .parse::<usize>()
-                .unwrap()
+                .map(|slot| slot.parse::<usize>().ok())
+                .flatten()
         })
         .collect())
 }

@@ -15,7 +15,6 @@ use super::{actions, finalizer};
 use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
 pub use vpn_types::*;
 
-
 /// Entrypoint for the `Provider` controller.
 pub async fn run(client: Client) -> Result<(), Error> {
     println!("Starting Provider controller...");

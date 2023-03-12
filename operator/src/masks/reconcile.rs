@@ -26,7 +26,7 @@ pub async fn run(client: Client) -> Result<(), Error> {
     // Preparation of resources used by the `kube_runtime::Controller`
     let crd_api: Api<Mask> = Api::all(client.clone());
     let context: Arc<ContextData> = Arc::new(ContextData::new(client.clone()));
-    
+
     // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
     // It requires the following information:
     // - `kube::Api<T>` this controller "owns". In this case, `T = Mask`, as this controller owns the `Mask` resource,

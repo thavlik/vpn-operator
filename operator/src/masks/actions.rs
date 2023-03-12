@@ -1,3 +1,4 @@
+use crate::util::{patch::*, PROVIDER_NAME_LABEL, PROVIDER_UID_LABEL};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::{
     api::{DeleteParams, ObjectMeta, PostParams, Resource},
@@ -5,7 +6,6 @@ use kube::{
 };
 use std::collections::BTreeMap;
 use vpn_types::*;
-use crate::util::{PROVIDER_NAME_LABEL, PROVIDER_UID_LABEL, patch::*};
 
 /// Updates the Provider's phase to Pending, which indicates
 /// the resource made its initial appearance to the operator.

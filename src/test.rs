@@ -276,8 +276,10 @@ async fn wait_for_secret(
     Ok(secret_api.get(&secret_name).await?)
 }
 
+/// Creates a random test namespace and returns a tuple
+/// containing the test's UUID and the namespace name.
 async fn create_test_namespace(client: Client) -> Result<(String, String), Error> {
-    let uid = uuid::Uuid::new_v4();
+    let uid = uuid::Uuid::new_v4().to_string();
     let name = format!("{}{}", NAMESPACE_PREFIX, uid);
     let namespace_api: Api<Namespace> = Api::all(client);
     let namespace = Namespace {
@@ -290,7 +292,7 @@ async fn create_test_namespace(client: Client) -> Result<(String, String), Error
     namespace_api
         .create(&Default::default(), &namespace)
         .await?;
-    Ok((uid.to_string(), name))
+    Ok((uid, name))
 }
 
 async fn delete_namespace(client: Client, name: &str) -> Result<(), Error> {

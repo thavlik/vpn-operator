@@ -36,15 +36,15 @@ pub async fn run(client: Client) -> Result<(), Error> {
     Controller::new(crd_api, ListParams::default())
         .owns(Api::<Secret>::all(client), ListParams::default())
         .run(reconcile, on_error, context)
-        .for_each(|reconciliation_result| async move {
-            match reconciliation_result {
-                Ok(_mask_resource) => {
-                    //println!("Reconciliation successful. Resource: {:?}", mask_resource);
-                }
-                Err(reconciliation_err) => {
-                    eprintln!("Reconciliation error: {:?}", reconciliation_err)
-                }
-            }
+        .for_each(|_reconciliation_result| async move {
+            //match reconciliation_result {
+            //    Ok(_mask_resource) => {
+            //        //println!("Reconciliation successful. Resource: {:?}", mask_resource);
+            //    }
+            //    Err(reconciliation_err) => {
+            //        eprintln!("Reconciliation error: {:?}", reconciliation_err)
+            //    }
+            //}
         })
         .await;
     Ok(())

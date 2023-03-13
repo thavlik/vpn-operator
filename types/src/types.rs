@@ -44,12 +44,19 @@ pub struct ProviderVerifyOverridesSpec {
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
 pub struct ProviderVerifySpec {
     /// If true, credentials verification is skipped entirely.
-    pub skip: bool,
+    pub skip: Option<bool>,
+
+    /// Duration string for how long the verify pod is allowed
+    /// to take before verification is considered failed.
+    pub timeout: Option<String>,
+
+    /// How often you want to verify the credentials (e.g. "1h30m")
+    /// If unset, the credentials are only verified once.
+    pub interval: Option<String>,
 
     /// Optional customization for the verification pod.
     /// Use this to set the image, networking, etc.
     /// It is merged onto the controller-created Pod.
-    #[serde(rename = "overrides")]
     pub overrides: Option<ProviderVerifyOverridesSpec>,
 }
 
@@ -126,6 +133,10 @@ pub enum ProviderPhase {
     /// The credentials are being verified with a gluetun pod.
     Verifying,
 
+    /// Verification is complete. The Provider will become Active
+    /// upon the next reconciliation.
+    Verified,
+
     /// The credentials verification failed.
     ErrVerifyFailed,
 
@@ -141,6 +152,7 @@ impl FromStr for ProviderPhase {
             "Pending" => Ok(ProviderPhase::Pending),
             "ErrSecretNotFound" => Ok(ProviderPhase::ErrSecretNotFound),
             "Verifying" => Ok(ProviderPhase::Verifying),
+            "Verified" => Ok(ProviderPhase::Verified),
             "ErrVerifyFailed" => Ok(ProviderPhase::ErrVerifyFailed),
             "Active" => Ok(ProviderPhase::Active),
             _ => Err(()),

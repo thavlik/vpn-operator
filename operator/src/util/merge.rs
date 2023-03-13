@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::Value;
 
 /// Deep merge two json values. Moves the values of `b` into `a`.
 /// Source: https://stackoverflow.com/a/54118457

@@ -69,6 +69,11 @@ fn get_test_provider(name: &str, namespace: &str) -> Provider {
         spec: ProviderSpec {
             max_slots: MAX_SLOTS,
             secret: name.to_owned(),
+            verify: Some(ProviderVerifySpec {
+                // We currently need to skip verification for testing.
+                skip: Some(true),
+                ..Default::default()
+            }),
             ..Default::default()
         },
         ..Default::default()

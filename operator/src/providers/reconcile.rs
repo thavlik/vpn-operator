@@ -1,11 +1,12 @@
 use chrono::Utc;
 use futures::stream::StreamExt;
-use k8s_openapi::api::core::v1::{ConfigMap, Secret};
+use k8s_openapi::api::core::v1::{ConfigMap, Pod, PodStatus, Secret};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::{
     api::ListParams, client::Client, runtime::controller::Action, runtime::Controller, Api,
     Resource, ResourceExt,
 };
+use lazy_static::lazy_static;
 use std::sync::Arc;
 use tokio::time::Duration;
 
@@ -31,20 +32,21 @@ pub async fn run(client: Client) -> Result<(), Error> {
     // - `reconcile` function with reconciliation logic to be called each time a resource of `Provider` kind is created/updated/deleted,
     // - `on_error` function to call whenever reconciliation fails.
     Controller::new(crd_api, ListParams::default())
-        .owns(Api::<ConfigMap>::all(client), ListParams::default())
+        .owns(Api::<ConfigMap>::all(client.clone()), ListParams::default())
+        .owns(Api::<Pod>::all(client), ListParams::default())
         .run(reconcile, on_error, context)
-        .for_each(|reconciliation_result| async move {
-            match reconciliation_result {
-                Ok(_provider_resource) => {
-                    //println!(
-                    //    "Reconciliation successful. Resource: {:?}",
-                    //    provider_resource
-                    //);
-                }
-                Err(reconciliation_err) => {
-                    eprintln!("Reconciliation error: {:?}", reconciliation_err)
-                }
-            }
+        .for_each(|_reconciliation_result| async move {
+            //match reconciliation_result {
+            //    Ok(_provider_resource) => {
+            //        //println!(
+            //        //    "Reconciliation successful. Resource: {:?}",
+            //        //    provider_resource
+            //        //);
+            //    }
+            //    Err(reconciliation_err) => {
+            //        eprintln!("Reconciliation error: {:?}", reconciliation_err)
+            //    }
+            //}
         })
         .await;
     Ok(())
@@ -89,7 +91,7 @@ enum ProviderAction {
     Verifying { start_time: Option<Time> },
 
     /// Set the status to Verified.
-    Verified { end_time: Time },
+    Verified,
 
     /// Set the status to ErrVerifyFailed.
     VerifyFailed(String),
@@ -189,24 +191,25 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             finalizer::add(client.clone(), &name, &namespace).await?;
 
             // Create the verification pod.
-            actions::create_verify_pod(client.clone(), &name, &namespace, &instance).await?;
+            let pod =
+                actions::create_verify_pod(client.clone(), &name, &namespace, &instance).await?;
 
             // Indicate that verification is in progress.
-            actions::verify_progress(client, &name, &namespace, None).await?;
+            actions::verify_progress(client, &instance, pod.metadata.creation_timestamp).await?;
 
             // Requeue after a short delay to allow the verification time to complete.
             Ok(Action::requeue(PROBE_INTERVAL))
         }
         ProviderAction::Verifying { start_time } => {
             // Post the progress to the status object.
-            actions::verify_progress(client, &name, &namespace, start_time).await?;
+            actions::verify_progress(client, &instance, start_time).await?;
 
             // Requeue after a short delay to allow the verification time to complete.
             Ok(Action::requeue(PROBE_INTERVAL))
         }
         ProviderAction::VerifyFailed(message) => {
             // Update the phase of the `Provider` resource to Verified.
-            actions::verify_failed(client.clone(), &name, &namespace, message).await?;
+            actions::verify_failed(client.clone(), &instance, message).await?;
 
             // Delete the verification pod so it can be recreated.
             actions::delete_verify_pod(client, &name, &namespace).await?;
@@ -214,15 +217,15 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // Requeue after a delay so the user has time to see the error phase.
             Ok(Action::requeue(PROBE_INTERVAL))
         }
-        ProviderAction::Verified { end_time } => {
-            // Update the phase of the `Provider` resource to Verified.
-            actions::verified(client.clone(), &name, &namespace, end_time).await?;
+        ProviderAction::Verified => {
+            // Set the timestamp of when the verification completed.
+            actions::verified(client.clone(), &instance).await?;
 
             // Delete the verification pod.
             actions::delete_verify_pod(client, &name, &namespace).await?;
 
-            // Requeue after a short delay.
-            Ok(Action::requeue(PROBE_INTERVAL))
+            // Requeue immediately to proceed with reconciliation.
+            Ok(Action::requeue(Duration::ZERO))
         }
         ProviderAction::Active { active_slots } => {
             // Update the phase of the `Provider` resource to Active.
@@ -288,7 +291,7 @@ fn needs_finalizer(instance: &Provider) -> bool {
 /// - `provider`: A reference to `Provider` being reconciled to decide next action upon.
 async fn determine_action(
     client: Client,
-    _name: &str,
+    name: &str,
     namespace: &str,
     instance: &Provider,
 ) -> Result<ProviderAction, Error> {
@@ -321,10 +324,162 @@ async fn determine_action(
         return Ok(ProviderAction::SecretNotFound(instance.spec.secret.clone()));
     }
 
+    // Check if the Provider requires verification.
+    if let Some(action) = determine_verify_action(client.clone(), name, namespace, instance).await?
+    {
+        return Ok(action);
+    }
+
     // Remaining actions aim to keep the status object current.
     determine_status_action(client, namespace, instance).await
 }
 
+lazy_static! {
+    static ref DEFAULT_VERIFY_SPEC: ProviderVerifySpec = Default::default();
+}
+
+const DEFAULT_VERIFY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Gets the verification pod for the Provider.
+async fn get_verify_pod(client: Client, name: &str, namespace: &str) -> Result<Option<Pod>, Error> {
+    let api: Api<Pod> = Api::namespaced(client, namespace);
+    match api.get(name).await {
+        Ok(pod) => Ok(Some(pod)),
+        Err(kube::Error::Api(ae)) if ae.code == 404 => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Returns the amount of time that has passed since the Pod's creation.
+fn get_pod_age(pod: &Pod) -> Result<Duration, Error> {
+    Ok((chrono::Utc::now()
+        - pod
+            .metadata
+            .creation_timestamp
+            .as_ref()
+            .ok_or_else(|| Error::UserInputError("Pod creation timestamp is missing".to_string()))?
+            .0)
+        .to_std()?)
+}
+
+/// Returns the amount of time the verification pod is allowed to run
+/// before it is considered a failure.
+fn get_probe_timeout(instance: &Provider) -> Duration {
+    instance
+        .spec
+        .verify
+        .as_ref()
+        .map_or(None, |v| v.timeout.as_deref())
+        .map_or(None, |t| parse_duration::parse(t).ok())
+        .unwrap_or(DEFAULT_VERIFY_TIMEOUT)
+}
+
+/// Determines the action given that the verification pod is present.
+async fn determine_verify_pod_action(
+    instance: &Provider,
+    pod: &Pod,
+) -> Result<Option<ProviderAction>, Error> {
+    // Examine the status object of the pod.
+    let status = pod
+        .status
+        .as_ref()
+        .ok_or_else(|| Error::UserInputError("Pod status is missing".to_string()))?;
+    let phase = status
+        .phase
+        .as_deref()
+        .ok_or_else(|| Error::UserInputError("Pod phase is missing".to_string()))?;
+    match phase {
+        // Verification pod is waiting to be scheduled.
+        // This may be an error if the pod isn't able to be scheduled.
+        "Pending" => Ok(Some({
+            if let Some(message) = check_pod_scheduling_error(status) {
+                return Ok(Some(ProviderAction::VerifyFailed(message)));
+            }
+            // Check if it's past the timeout.
+            if get_pod_age(pod)? > get_probe_timeout(instance) {
+                return Ok(Some(ProviderAction::VerifyFailed(
+                    "Verification timed out waiting for Pod to schedule.".to_owned(),
+                )));
+            }
+            // Still waiting for pod to be scheduled.
+            ProviderAction::Verifying {
+                start_time: pod.metadata.creation_timestamp.clone(),
+            }
+        })),
+        // Verification pod is still waiting for the IP to change.
+        "Running" => {
+            // Make sure the verification pod isn't too old.
+            // If it goes past the timeout, it doesn't matter what
+            // phase it's in, it will be considered a failure.
+            if get_pod_age(pod)? > get_probe_timeout(instance) {
+                return Ok(Some(ProviderAction::VerifyFailed(
+                    "Timed out waiting for VPN connection.".to_owned(),
+                )));
+            }
+            // Verification is still in progress.
+            Ok(Some(ProviderAction::Verifying {
+                start_time: pod.metadata.creation_timestamp.clone(),
+            }))
+        }
+        // Verification has completed (new IP obtained).
+        "Succeeded" => Ok(Some(ProviderAction::Verified)),
+        // Unknown error.
+        _ => Err(Error::UserInputError(format!(
+            "Unknown pod phase: {}",
+            phase
+        ))),
+    }
+}
+
+/// Checks if verification is necessary and returns the appropriate action.
+async fn determine_verify_action(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    instance: &Provider,
+) -> Result<Option<ProviderAction>, Error> {
+    let verify = match instance.spec.verify {
+        // User is requesting verification be skipped.
+        Some(ref verify) if verify.skip.unwrap_or(false) => return Ok(None),
+        // Use the specified verification settings.
+        Some(ref verify) => verify,
+        // Use default verification settings.
+        None => &DEFAULT_VERIFY_SPEC,
+    };
+
+    // Check if the verify pod exists.
+    if let Some(pod) = get_verify_pod(client.clone(), name, namespace).await? {
+        // Verification pod exists. Examine its status object.
+        return determine_verify_pod_action(instance, &pod).await;
+    }
+
+    // Determine if we need to create the verification pod.
+    if let Some(ref last_verified) = instance.status.as_ref().unwrap().last_verified {
+        // The service has been verified before.
+        let interval = match verify.interval {
+            // Verification has passed once and the user is not
+            // requesting periodic verification.
+            None => return Ok(None),
+            // User is requesting periodic verification.
+            Some(ref interval) => interval,
+        };
+        // Parse the interval spec into a Duration.
+        let interval = chrono::Duration::from_std(parse_duration::parse(interval)?)?;
+        // Determine the age of the verificataion.
+        let last_verified: chrono::DateTime<Utc> = last_verified.parse()?;
+        let age: chrono::Duration = Utc::now() - last_verified;
+        if age < interval {
+            // Verification is up to date.
+            return Ok(None);
+        }
+        // Verification is stale.
+    }
+
+    // Create the verification pod.
+    Ok(Some(ProviderAction::Verify))
+}
+
+/// Returns the number of reservation ConfigMaps for a Provider.
 async fn count_reservations(
     client: Client,
     namespace: &str,
@@ -343,6 +498,7 @@ async fn count_reservations(
         .items
         .into_iter()
         .filter(|cm| {
+            // Only inspect ConfigMaps owned by this Provider.
             cm.metadata
                 .owner_references
                 .as_ref()
@@ -390,4 +546,23 @@ async fn determine_status_action(
 fn on_error(instance: Arc<Provider>, error: &Error, _context: Arc<ContextData>) -> Action {
     eprintln!("Reconciliation error:\n{:?}.\n{:?}", error, instance);
     Action::requeue(Duration::from_secs(5))
+}
+
+fn check_pod_scheduling_error(status: &PodStatus) -> Option<String> {
+    let conditions: &Vec<_> = match status.conditions.as_ref() {
+        Some(conditions) => conditions,
+        None => return None,
+    };
+    for condition in conditions {
+        if condition.type_ == "PodScheduled" && condition.status == "False" {
+            return Some(
+                condition
+                    .message
+                    .as_deref()
+                    .unwrap_or("PodScheduled == False, but no message was provided.")
+                    .to_owned(),
+            );
+        }
+    }
+    None
 }

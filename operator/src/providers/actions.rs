@@ -195,10 +195,23 @@ fn mask_uses_provider(name: &str, namespace: &str, uid: &str, mask: &Mask) -> bo
 /// Update the status object to show the verification is in progress.
 pub async fn verify_progress(
     client: Client,
-    name: &str,
-    namespace: &str,
+    instance: &Provider,
     start_time: Option<Time>,
 ) -> Result<(), Error> {
+    patch_status(client, instance, |status| {
+        status.message = Some(match start_time {
+            Some(ref start_time) => {
+                let elapsed = chrono::Utc::now() - start_time.0;
+                format!(
+                    "Verification is in progress. Elapsed time: {}s",
+                    elapsed.num_seconds()
+                )
+            }
+            None => "Verification is in progress.".to_owned(),
+        });
+        status.phase = Some(ProviderPhase::Verifying);
+    })
+    .await?;
     Ok(())
 }
 
@@ -206,10 +219,14 @@ pub async fn verify_progress(
 /// encountered during verification.
 pub async fn verify_failed(
     client: Client,
-    name: &str,
-    namespace: &str,
+    instance: &Provider,
     message: String,
 ) -> Result<(), Error> {
+    patch_status(client, instance, |status| {
+        status.message = Some(message);
+        status.phase = Some(ProviderPhase::ErrVerifyFailed);
+    })
+    .await?;
     Ok(())
 }
 
@@ -258,12 +275,7 @@ fn get_probe_container(overrides: Option<&Value>) -> Result<Container, Error> {
 }
 
 /// Returns the container that connects to the VPN.
-fn get_vpn_container(
-    namespace: &str,
-    provider: &Provider,
-    secret: &Secret,
-    overrides: Option<&Value>,
-) -> Result<Container, Error> {
+fn get_vpn_container(secret: &Secret, overrides: Option<&Value>) -> Result<Container, Error> {
     let secret_name = secret.metadata.name.as_deref().unwrap();
     let mut container = DEFAULT_VPN_CONTAINER.clone();
     container.env = secret.data.as_ref().map(|data| {
@@ -304,12 +316,8 @@ fn verify_pod(
 
     // Assemble the container specs with the overrides.
     let init_container = get_init_container(container_overrides.map_or(None, |c| c.init.as_ref()))?;
-    let vpn_container = get_vpn_container(
-        namespace,
-        instance,
-        secret,
-        container_overrides.map_or(None, |c| c.vpn.as_ref()),
-    )?;
+    let vpn_container =
+        get_vpn_container(secret, container_overrides.map_or(None, |c| c.vpn.as_ref()))?;
     let probe_container =
         get_probe_container(container_overrides.map_or(None, |c| c.probe.as_ref()))?;
 
@@ -331,6 +339,13 @@ fn verify_pod(
             restart_policy: Some("Never".to_owned()),
             init_containers: Some(vec![init_container]),
             containers: vec![vpn_container, probe_container],
+            volumes: Some(vec![Volume {
+                name: SHARED_VOLUME_NAME.to_owned(),
+                empty_dir: Some(EmptyDirVolumeSource {
+                    ..EmptyDirVolumeSource::default()
+                }),
+                ..Volume::default()
+            }]),
             ..Default::default()
         }),
         ..Default::default()
@@ -338,24 +353,25 @@ fn verify_pod(
 
     // Apply overrides to the pod if necessary.
     match overrides.map_or(None, |o| o.pod.as_ref()) {
-        // No pod override requested.
-        _ => Ok(pod),
         // Merge the overriden values into the resource.
         Some(pod_template) => {
             let mut val = serde_json::to_value(&pod)?;
             deep_merge(&mut val, pod_template.clone());
             Ok(serde_json::from_value(val)?)
         }
+        // No pod override requested.
+        _ => Ok(pod),
     }
 }
 
-/// Creates a pod that verifies the VPN credentials work.
-pub async fn verified(
-    client: Client,
-    name: &str,
-    namespace: &str,
-    end_time: Time,
-) -> Result<(), Error> {
+/// Signals that the VPN credentials are verified.
+pub async fn verified(client: Client, instance: &Provider) -> Result<(), Error> {
+    patch_status(client, instance, |status| {
+        status.last_verified = Some(chrono::Utc::now().to_rfc3339());
+        status.phase = Some(ProviderPhase::Verified);
+        status.message = Some("VPN credentials verified as authentic.".to_owned())
+    })
+    .await?;
     Ok(())
 }
 
@@ -365,14 +381,16 @@ pub async fn create_verify_pod(
     name: &str,
     namespace: &str,
     instance: &Provider,
-) -> Result<(), Error> {
+) -> Result<Pod, Error> {
+    // Get the VPN credentials secret so we know which keys
+    // to inject into the VPN container's environment.
     let secret_api: Api<Secret> = Api::namespaced(client.clone(), namespace);
     let secret = secret_api.get(&instance.spec.secret).await?;
+
+    // Create the pod, honoring overrides in the Provider spec.
     let pod = verify_pod(name, namespace, instance, &secret)?;
-    // TODO: merge the overrides into the pod.
-    let api: Api<Pod> = Api::namespaced(client, namespace);
-    api.create(&Default::default(), &pod).await?;
-    Ok(())
+    let pod_api: Api<Pod> = Api::namespaced(client, namespace);
+    Ok(pod_api.create(&Default::default(), &pod).await?)
 }
 
 /// Unassigns all Mask resources that are assigned to this Provider.
@@ -394,7 +412,7 @@ pub async fn unassign_all(
         patch_status(client.clone(), &mask, |status| {
             status.provider = None;
             status.message = Some("Provider was unassigned upon its deletion.".to_owned());
-            status.phase = Some(MaskPhase::Pending);
+            status.phase = Some(MaskPhase::Waiting);
         })
         .await?;
 

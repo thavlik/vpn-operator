@@ -33,4 +33,10 @@ pub enum Error {
         #[from]
         source: serde_json::Error,
     },
+
+    #[error("Parse duration: {source}")]
+    ParseDurationError {
+        #[from]
+        source: parse_duration::parse::Error,
+    },
 }

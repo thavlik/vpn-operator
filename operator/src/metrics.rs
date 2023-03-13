@@ -4,7 +4,6 @@ use hyper::{
     Body, Request, Response, Server,
 };
 use prometheus::{Counter, CounterVec, Encoder, Gauge, HistogramVec, TextEncoder};
-
 use const_format::concatcp;
 use lazy_static::lazy_static;
 use prometheus::{

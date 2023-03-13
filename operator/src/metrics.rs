@@ -1,14 +1,14 @@
+use const_format::concatcp;
 use hyper::{
     header::CONTENT_TYPE,
     service::{make_service_fn, service_fn},
     Body, Request, Response, Server,
 };
-use prometheus::{Counter, CounterVec, Encoder, Gauge, HistogramVec, TextEncoder};
-use const_format::concatcp;
 use lazy_static::lazy_static;
 use prometheus::{
     labels, opts, register_counter, register_counter_vec, register_gauge, register_histogram_vec,
 };
+use prometheus::{Counter, CounterVec, Encoder, Gauge, HistogramVec, TextEncoder};
 
 /// The prefix to add to all the prometheus metrics keys.
 const METRICS_PREFIX: &str = "vpno_";

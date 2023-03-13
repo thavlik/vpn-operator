@@ -30,27 +30,61 @@ pub enum Error {
     Other(String),
 }
 
+async fn get_actual_provider_secret(client: Client) -> Result<Option<Secret>, Error> {
+    let name = match std::env::var("SECRET_NAME") {
+        Ok(name) => name,
+        Err(_) => return Ok(None),
+    };
+    let namespace = match std::env::var("SECRET_NAMESPACE") {
+        Ok(namespace) => namespace,
+        Err(_) => "default".to_owned(),
+    };
+    let secret_api: Api<Secret> = Api::namespaced(client, &namespace);
+    Ok(Some(secret_api.get(&name).await?))
+}
+
 /// Returns the test Provider's credentials Secret resource.
-fn get_test_provider_secret(provider: &Provider) -> Secret {
-    Secret {
+async fn get_test_provider_secret(client: Client, provider: &Provider) -> Result<Secret, Error> {
+    // Use the default test credentials, which bypass verification.
+    let env_secret = get_actual_provider_secret(client).await?;
+    Ok(Secret {
         metadata: ObjectMeta {
             name: Some(provider.metadata.name.clone().unwrap()),
             namespace: Some(provider.metadata.namespace.clone().unwrap()),
             owner_references: Some(vec![provider.controller_owner_ref(&()).unwrap()]),
             ..Default::default()
         },
-        string_data: Some(
-            vec![
-                // These values correspond to glueten environment variables.
-                ("VPN_NAME".to_owned(), "my-vpn-provider-name".to_owned()),
-                ("VPN_USERNAME".to_owned(), "test-username".to_owned()),
-                ("VPN_PASSWORD".to_owned(), "test-password".to_owned()),
-            ]
-            .into_iter()
-            .collect(),
-        ),
+        string_data: {
+            // See if the test environment is using real VPN credentials.
+            if env_secret.is_none() {
+                // Use mock VPN credentials.
+                Some(
+                    vec![
+                        // These values correspond to gluetun environment variables.
+                        ("VPN_NAME".to_owned(), "my-vpn-provider-name".to_owned()),
+                        ("VPN_USERNAME".to_owned(), "test-username".to_owned()),
+                        ("VPN_PASSWORD".to_owned(), "test-password".to_owned()),
+                    ]
+                    .into_iter()
+                    .collect(),
+                )
+            } else {
+                // We're using real VPN credentials, so we need to populate
+                // the data field directly.
+                None
+            }
+        },
+        data: {
+            if let Some(env_secret) = env_secret {
+                // Inherit the data from the actual VPN secret.
+                env_secret.data
+            } else {
+                // Use the mock data above.
+                None
+            }
+        },
         ..Default::default()
-    }
+    })
 }
 
 /// Returns the test Provider resource.
@@ -107,7 +141,7 @@ async fn create_test_provider_secret(
     namespace: &str,
     provider: &Provider,
 ) -> Result<Secret, Error> {
-    let secret = get_test_provider_secret(&provider);
+    let secret = get_test_provider_secret(client.clone(), &provider).await?;
     let secret_api: Api<Secret> = Api::namespaced(client, namespace);
     Ok(secret_api.create(&Default::default(), &secret).await?)
 }

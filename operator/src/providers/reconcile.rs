@@ -84,7 +84,7 @@ enum ProviderAction {
     /// Set the `Provider` resource status.phase to ErrSecretNotFound.
     SecretNotFound(String),
 
-    /// Create a glueten pod and verify that the external IP changes.
+    /// Create a gluetun pod and verify that the external IP changes.
     Verify,
 
     /// Set the status to Verifying.

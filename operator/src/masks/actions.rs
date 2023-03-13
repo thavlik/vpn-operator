@@ -67,11 +67,18 @@ async fn list_active_providers(
             p.status
                 .as_ref()
                 .map_or(false, |s| s.phase == Some(ProviderPhase::Active))
-        }).collect();
+        })
+        .collect();
     if let Some(mask_namepace) = mask_namespace {
-        providers = providers.into_iter().filter(|p| {
-            p.spec.namespaces.as_ref().map_or(false, |ns| ns.iter().any(|n| n == mask_namepace))
-        }).collect();
+        providers = providers
+            .into_iter()
+            .filter(|p| {
+                p.spec
+                    .namespaces
+                    .as_ref()
+                    .map_or(false, |ns| ns.iter().any(|n| n == mask_namepace))
+            })
+            .collect();
     }
     if let Some(ref filter) = filter {
         providers = providers
@@ -156,7 +163,12 @@ pub async fn assign_provider(
     instance: &Mask,
 ) -> Result<bool, Error> {
     // See if there are any providers available.
-    let providers = list_active_providers(client.clone(), instance.spec.providers.as_ref(), Some(namespace)).await?;
+    let providers = list_active_providers(
+        client.clone(),
+        instance.spec.providers.as_ref(),
+        Some(namespace),
+    )
+    .await?;
     if providers.is_empty() {
         // Reflect the error in the status.
         patch_status(client, instance, |status| {
@@ -177,8 +189,12 @@ pub async fn assign_provider(
     // Remove any dangling reservations.
     if prune(client.clone()).await? {
         // One or more dangling reservations were removed, so retrying should succeed.
-        let providers =
-            list_active_providers(client.clone(), instance.spec.providers.as_ref(), Some(namespace)).await?;
+        let providers = list_active_providers(
+            client.clone(),
+            instance.spec.providers.as_ref(),
+            Some(namespace),
+        )
+        .await?;
         if assign_provider_base(client.clone(), name, namespace, instance, &providers).await? {
             return Ok(true);
         }

@@ -45,9 +45,9 @@ metadata:
   namespace: default
 spec:
   stringData:
-  # Environment variables for glueten, or however you
+  # Environment variables for gluetun, or however you
   # choose to connect to your VPN. Set spec.verify.skip=true
-  # in the Mask resource to disable verification with glueten.
+  # in the Mask resource to disable verification with gluetun.
     VPN_NAME: "my-vpn-name"
     VPN_USERNAME: "myusername"
     VPN_PASSWORD: "mypassword"
@@ -77,7 +77,7 @@ spec:
   # The controller will attempt to verify that the
   # VPN credentials are correct and the service works.
   # It will do this by injecting the Secret's data as
-  # environment variables into a glueten container and
+  # environment variables into a gluetun container and
   # probing an IP service until it returns something
   # different from the initial/unmasked IP address.
   # Note: all of these fields are optional.

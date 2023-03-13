@@ -44,6 +44,9 @@ async fn get_actual_provider_secret(client: Client) -> Result<Option<Secret>, Er
 }
 
 /// Returns the test Provider's credentials Secret resource.
+/// If the environment specified a real secret, it will be used.
+/// This will also enable verification. Otherwise, mock credentials
+/// will be used and verificationwill be disabled.
 async fn get_test_provider_secret(client: Client, provider: &Provider) -> Result<Secret, Error> {
     // Use the default test credentials, which bypass verification.
     let env_secret = get_actual_provider_secret(client).await?;
@@ -87,9 +90,10 @@ async fn get_test_provider_secret(client: Client, provider: &Provider) -> Result
     })
 }
 
-/// Returns the test Provider resource.
-fn get_test_provider(name: &str, namespace: &str) -> Provider {
-    Provider {
+/// Returns the test Provider resource. If we are using mock credentials,
+/// verification will be disabled. Otherwise, verification will be enabled.
+async fn get_test_provider(client: Client, name: &str, namespace: &str) -> Result<Provider, Error> {
+    Ok(Provider {
         metadata: ObjectMeta {
             name: Some(name.to_owned()),
             namespace: Some(namespace.to_owned()),
@@ -109,14 +113,14 @@ fn get_test_provider(name: &str, namespace: &str) -> Provider {
             namespaces: Some(vec![namespace.to_owned()]),
             // We currently need to skip verification for testing.
             verify: Some(ProviderVerifySpec {
-                // We currently need to skip verification for testing.
-                skip: Some(true),
+                // Skip verification if we are using the mock credentials.
+                skip: Some(get_actual_provider_secret(client).await?.is_none()),
                 ..Default::default()
             }),
             ..Default::default()
         },
         ..Default::default()
-    }
+    })
 }
 
 /// Returns a test Mask resource with the given slot as the name suffix.
@@ -157,7 +161,7 @@ async fn create_test_provider(
         client.clone(),
         &name,
         namespace,
-        get_test_provider(&name, namespace),
+        get_test_provider(client.clone(), &name, namespace).await?,
     )
     .await?;
     println!(

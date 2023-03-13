@@ -55,9 +55,10 @@ pub async fn unassign_provider(
 async fn list_active_providers(
     client: Client,
     filter: Option<&Vec<String>>,
+    mask_namespace: Option<&str>,
 ) -> Result<Vec<Provider>, Error> {
     let api: Api<Provider> = Api::all(client);
-    let providers = api
+    let mut providers: Vec<Provider> = api
         .list(&Default::default())
         .await?
         .into_iter()
@@ -66,18 +67,24 @@ async fn list_active_providers(
             p.status
                 .as_ref()
                 .map_or(false, |s| s.phase == Some(ProviderPhase::Active))
-        });
+        }).collect();
+    if let Some(mask_namepace) = mask_namespace {
+        providers = providers.into_iter().filter(|p| {
+            p.spec.namespaces.as_ref().map_or(false, |ns| ns.iter().any(|n| n == mask_namepace))
+        }).collect();
+    }
     if let Some(ref filter) = filter {
-        return Ok(providers
+        providers = providers
+            .into_iter()
             .filter(|p| {
                 p.metadata.labels.as_ref().map_or(false, |l| {
                     l.get(PROVIDER_NAME_LABEL)
                         .map_or(false, |v| filter.contains(v))
                 })
             })
-            .collect());
+            .collect();
     }
-    Ok(providers.collect())
+    Ok(providers)
 }
 
 /// Assigns a new Provider to the Mask. Returns true
@@ -149,7 +156,7 @@ pub async fn assign_provider(
     instance: &Mask,
 ) -> Result<bool, Error> {
     // See if there are any providers available.
-    let providers = list_active_providers(client.clone(), instance.spec.providers.as_ref()).await?;
+    let providers = list_active_providers(client.clone(), instance.spec.providers.as_ref(), Some(namespace)).await?;
     if providers.is_empty() {
         // Reflect the error in the status.
         patch_status(client, instance, |status| {
@@ -171,7 +178,7 @@ pub async fn assign_provider(
     if prune(client.clone()).await? {
         // One or more dangling reservations were removed, so retrying should succeed.
         let providers =
-            list_active_providers(client.clone(), instance.spec.providers.as_ref()).await?;
+            list_active_providers(client.clone(), instance.spec.providers.as_ref(), Some(namespace)).await?;
         if assign_provider_base(client.clone(), name, namespace, instance, &providers).await? {
             return Ok(true);
         }
@@ -236,7 +243,7 @@ async fn check_prune(
 /// Deletes dangling reservations that are no longer owned by a Mask.
 async fn prune(client: Client) -> Result<bool, Error> {
     let mut deleted = false;
-    let providers = list_active_providers(client.clone(), None).await?;
+    let providers = list_active_providers(client.clone(), None, None).await?;
     for provider in &providers {
         let name = provider.metadata.name.as_deref().unwrap();
         let namespace = provider.metadata.namespace.as_deref().unwrap();
@@ -362,13 +369,7 @@ pub async fn get_provider_secret(
 
 /// Creates the secret for the Mask to use. It is a copy of the Provider's secret.
 pub async fn create_secret(client: Client, namespace: &str, instance: &Mask) -> Result<(), Error> {
-    let provider = instance
-        .status
-        .as_ref()
-        .unwrap()
-        .provider
-        .as_ref()
-        .expect("provider is not assigned");
+    let provider = instance.status.as_ref().unwrap().provider.as_ref().unwrap();
     let provider_secret =
         get_provider_secret(client.clone(), &provider.name, &provider.namespace).await?;
     let oref = instance.controller_owner_ref(&()).unwrap();

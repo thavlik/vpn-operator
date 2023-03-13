@@ -46,10 +46,8 @@ metadata:
 spec:
   stringData:
   # Environment variables for glueten, or however you
-  # choose to connect to your VPN - this project makes
-  # no prescription. The contents of this Secret will
-  # be duplicated to the Mask's namespace when assigned.
-  # Refer to https://github.com/qdm12/gluetun
+  # choose to connect to your VPN. Set spec.verify.skip=true
+  # in the Mask resource to disable verification with glueten.
     VPN_NAME: "my-vpn-name"
     VPN_USERNAME: "myusername"
     VPN_PASSWORD: "mypassword"
@@ -75,6 +73,57 @@ spec:
 
   # Corresponds to the above Secret resource.
   secret: my-vpn-credentials
+
+  # The controller will attempt to verify that the
+  # VPN credentials are correct and the service works.
+  # It will do this by injecting the Secret's data as
+  # environment variables into a glueten container and
+  # probing an IP service until it returns something
+  # different from the initial/unmasked IP address.
+  # Note: all of these fields are optional.
+  verify:
+    # Set to true to bypass credentials verification.
+    skip: false
+
+    # Amount of time that can elapse before verification is failed.
+    timeout: 30s
+
+    # You can configure periodic verification here:
+    interval: 1h
+
+    # The following enables customization of the verification Pod
+    # resource. All of these values are optional, and they are merged
+    # onto the default generated.
+    overrides:
+      pod: # Overrides for the Pod resource.
+        metadata:
+          labels:
+            mylabel: myvalue
+        spec:
+          # Use case: your verify pod need access to your cluster
+          # in order to check if your custom VPN is working
+          serviceAccountName: my-service-account
+      # Overrides for the containers are specified separately.
+      # This way you can omit them from the pod override.
+      containers:
+      # Overrides for the init Container. This container fetches
+      # the unmasked IP address from an external service and writes
+      # it to /shared/ip for the other containers.
+        init:
+          image: curlimages/curl:7.88.1
+      # Overrides for the VPN Container. This container connects
+      # to the VPN service using environment variables from the
+      # Provider's credentials Secret. As all containers in a pod
+      # share the same network, it will connect all containers
+      # to the VPN.
+        vpn:
+          image: qmcgaw/gluetun:latest
+          imagePullPolicy: Always
+      # Overrides for the probe Container. This container is
+      # responsible for probing the IP service and exiting with
+      # code zero when it differs from the initial IP.
+        probe:
+          image: curlimages/curl:7.88.1
 ```
 
 2. Make sure the `Provider` enters the `Active` phase:

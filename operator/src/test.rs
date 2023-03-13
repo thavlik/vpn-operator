@@ -67,8 +67,13 @@ fn get_test_provider(name: &str, namespace: &str) -> Provider {
             ..Default::default()
         },
         spec: ProviderSpec {
+            // Maximum number of active connections.
             max_slots: MAX_SLOTS,
+            // Same of Secret containing the env credentials.
             secret: name.to_owned(),
+            // Only assign this Provider to Masks in the same namespace.
+            namespaces: Some(vec![namespace.to_owned()]),
+            // We currently need to skip verification for testing.
             verify: Some(ProviderVerifySpec {
                 // We currently need to skip verification for testing.
                 skip: Some(true),
@@ -89,6 +94,7 @@ fn get_test_mask(namespace: &str, slot: usize, provider_label: &str) -> Mask {
             ..Default::default()
         },
         spec: MaskSpec {
+            // Only use the Provider created by this specific test.
             providers: Some(vec![provider_label.to_owned()]),
         },
         ..Default::default()

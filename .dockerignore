@@ -1,6 +1,7 @@
 target/
 .idea/
 .vscode/
+secrets/
 .gitignore
 kindest.yaml
 LICENSE*

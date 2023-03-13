@@ -35,6 +35,12 @@ spec:
                 format: uint
                 minimum: 0.0
                 type: integer
+              namespaces:
+                description: Optional list of namespaces that are allowed to use this Provider. If unset, all namespaces are allowed.
+                items:
+                  type: string
+                nullable: true
+                type: array
               secret:
                 description: Reference to a Secret resource containing the env vars that will be injected into the gluetun container.
                 type: string

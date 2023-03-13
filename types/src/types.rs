@@ -90,6 +90,10 @@ pub struct ProviderSpec {
     #[serde(rename = "maxSlots")]
     pub max_slots: usize,
 
+    /// Optional list of namespaces that are allowed to use
+    /// this Provider. If unset, all namespaces are allowed.
+    pub namespaces: Option<Vec<String>>,
+
     /// VPN service verification options, used to ensure the
     /// credentials are valid before allowing Masks to use them.
     pub verify: Option<ProviderVerifySpec>,

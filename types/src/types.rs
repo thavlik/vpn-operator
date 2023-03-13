@@ -7,20 +7,20 @@ use std::str::FromStr;
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
 pub struct ProviderVerifyContainerOverridesSpec {
     /// Customization for the init container that gets the initial IP address.
-    /// The structure of this field corresponds to the Container schema. 
+    /// The structure of this field corresponds to the Container schema.
     /// Validation is disabled for both peformance and simplicity.
     #[schemars(schema_with = "any_schema")]
     pub init: Option<Value>,
 
     /// Customization for the gluetun container that connects to the VPN.
-    /// The structure of this field corresponds to the Container schema. 
+    /// The structure of this field corresponds to the Container schema.
     /// Validation is disabled for both peformance and simplicity.
     #[schemars(schema_with = "any_schema")]
     pub vpn: Option<Value>,
 
     /// Customization for the container that checks the public IP address
     /// until it differs from the initial.
-    /// The structure of this field corresponds to the Container schema. 
+    /// The structure of this field corresponds to the Container schema.
     /// Validation is disabled for both peformance and simplicity.
     #[schemars(schema_with = "any_schema")]
     pub probe: Option<Value>,
@@ -35,7 +35,7 @@ pub struct ProviderVerifyOverridesSpec {
 
     // Optional customization for the verification Pod resource:
     // https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#Pod
-    /// The structure of this field corresponds to the Pod schema. 
+    /// The structure of this field corresponds to the Pod schema.
     /// Validation is disabled for both peformance and simplicity.
     #[schemars(schema_with = "any_schema")]
     pub pod: Option<Value>,
@@ -91,7 +91,7 @@ pub struct ProviderSpec {
     pub max_slots: usize,
 
     /// VPN service verification options, used to ensure the
-    /// credentials are valid before allowing Masks to use them. 
+    /// credentials are valid before allowing Masks to use them.
     pub verify: Option<ProviderVerifySpec>,
 
     /// Reference to a Secret resource containing the env vars
@@ -236,10 +236,10 @@ pub struct AssignedProvider {
 pub enum MaskPhase {
     /// The resource first appeared to the controller.
     Pending,
-    
+
     /// The resource is waiting for a Provider to become available.
     Waiting,
-    
+
     /// No Provider resources are available.
     ErrNoProviders,
 

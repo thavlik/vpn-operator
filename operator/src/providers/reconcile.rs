@@ -482,7 +482,8 @@ async fn determine_verify_pod_action(
         // Unknown error.
         // TODO: post failure error message to status object.
         _ => Ok(Some(ProviderAction::VerifyFailed(
-            "Unknown error occurred during verification.".to_owned()))),
+            "Unknown error occurred during verification.".to_owned(),
+        ))),
     }
 }
 

@@ -50,12 +50,12 @@ pub const PROBE_CONTAINER_NAME: &str = "probe";
 /// The script used by the probe container to check if the
 /// VPN is connected. Requires the environment variables.
 const PROBE_SCRIPT: &str = "#!/bin/sh
+INITIAL_IP=$(cat $IP_FILE_PATH) # created by init container
+echo \"Unmasked IP address is $INITIAL_IP\"
 INITIAL_WAIT=6s
 echo \"Waiting for $INITIAL_WAIT to allow the VPN container time to connect...\"
 sleep $INITIAL_WAIT
 TIMEOUT=5 # IP service request timeout (seconds)
-INITIAL_IP=$(cat $IP_FILE_PATH) # created by init container
-echo \"Unmasked IP address is $INITIAL_IP\"
 IP=$(curl -m $TIMEOUT -s $IP_SERVICE)
 ITER=0
 # IP service may fail or return the same IP address.

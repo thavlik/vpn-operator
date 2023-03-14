@@ -94,7 +94,7 @@ spec:
     # necessary, but this example will dial the service once a day
     # just to keep the status up to date. This would be most useful
     # if you had a large number of services and you want to automate
-    # the process of regularly verifying the credentials are still valid.
+    # the process of regularly verifying the credentials are valid.
     interval: 24h
 
     # The following enables customization of the verification Pod
@@ -105,10 +105,6 @@ spec:
         metadata:
           labels:
             mylabel: myvalue
-        spec:
-          # Use case: your verify pod need access to your cluster
-          # in order to check if your custom VPN is working
-          serviceAccountName: my-service-account
       # Overrides for the containers are specified separately.
       # This way you can omit them from the pod override.
       containers:
@@ -153,10 +149,54 @@ spec:
 ```bash
 kubectl get mask -Aw
 ```
-5. The `Mask`'s status object contains a reference to the VPN credentials Secret created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. as environment variables with [gluetun](https://github.com/qdm12/gluetun)).
+5. The `Mask`'s status object contains a reference to the VPN credentials `Secret` created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. as environment variables with [gluetun](https://github.com/qdm12/gluetun)).
 
-## Chart Configuration
+## Chart configuration (values.yaml)
 ```yaml
+# Container image to use for the controllers.
+image: thavlik/vpn-operator:latest
+
+# Pull policy for the controller image.
+imagePullPolicy: Always
+
+# Prometheus metrics configuration. See kube-prometheus:
+# https://github.com/prometheus-operator/kube-prometheus
+prometheus:
+  # Run the metrics server with the controllers. This will
+  # report on the actions taken as well as how how much
+  # time elapses between their read/write phases.
+  # All keys are prefixed with 'vpno_'
+  expose: true
+
+  # Create PodMonitor resources for the controllers.
+  # This value may be false while `expose` is true if you
+  # want to scrape the controller pods using another method.
+  podMonitors: true
+
+# The Mask and Provider resources have separate Deployments.
+# This improves scaling and allows you to configure their
+# resource budgets separately.
+# Note: the current values are not based on any empirical
+# profiling. They are just a starting point and require
+# fine-tuning for future releases, but should be more than
+# enough for most scenarios.
+controllers:
+  masks:
+    resources:
+      requests:
+        memory: 32Mi
+        cpu: 10m
+      limits:
+        memory: 128Mi
+        cpu: 100m
+  providers:
+    resources:
+      requests:
+        memory: 32Mi
+        cpu: 10m
+      limits:
+        memory: 128Mi
+        cpu: 100m
 ```
 
 ## Scaling

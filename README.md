@@ -37,7 +37,7 @@ helm install \
 ```
 
 ## Usage
-1. Create a `Provider` resource and credentials `Secret` with your VPN credentials:
+1. Create a `Provider` resource and credentials `Secret` with your VPN credentials. Unless you set `spec.verify.skip=true` in the `Provider`, the controller will dial the service with your credentials as a way to automatically test the service end-to-end for you. The expected structure of the credentials secret corresponds to environment variables for a [glueten](https://github.com/qdm12/gluetun) container. Refer to the [gluetun wiki](https://github.com/qdm12/gluetun/wiki) for provider-specific guides.
 ```yaml
 apiVersion: v1
 kind: Secret
@@ -48,10 +48,12 @@ spec:
   stringData:
   # Environment variables for gluetun, or however you
   # choose to connect to your VPN. Set spec.verify.skip=true
-  # in the Mask resource to disable verification with gluetun.
-    VPN_NAME: "my-vpn-name"
-    VPN_USERNAME: "myusername"
-    VPN_PASSWORD: "mypassword"
+  # in the Provider to disable verification with gluetun.
+  # For example, with NordVPN: https://github.com/qdm12/gluetun/wiki/NordVPN
+    VPN_SERVICE_PROVIDER: nordvpn
+    OPENVPN_USER: myuser@mydomain.com
+    OPENVPN_PASSWORD: examplePassword12345
+    SERVER_REGIONS: Netherlands
 ---
 apiVersion: vpn.beebs.dev/v1
 kind: Provider
@@ -64,15 +66,14 @@ metadata:
   # exclusion of others.
     vpn.beebs.dev/provider: my-example-vpn-label
 spec:
-  # In this example, the contractual terms with the
-  # VPN service only allows five devices to be active
-  # simultaneously. This field is mandatory. You
-  # shouldn't attempt to create an unlimited number
-  # of connections. Always set it to sane value for
-  # your purposes. 
-  maxSlots: 5
+  # In this example, the contractual terms with NordVPN
+  # allows up to six devices to be active simultaneously.
+  # This field is mandatory. You shouldn't attempt to
+  # create an obscene number of connections. Always set
+  # it to sane value for your purposes. 
+  maxSlots: 6
 
-  # Corresponds to the above Secret resource.
+  # Corresponds to the above Secret's metadata.name
   secret: my-vpn-credentials
 
   # The controller will attempt to verify that the
@@ -87,10 +88,14 @@ spec:
     skip: false
 
     # Amount of time that can elapse before verification is failed.
-    timeout: 30s
+    timeout: 1m30s
 
-    # You can configure periodic verification here:
-    interval: 1h
+    # You can configure periodic verification here. It's not terribly
+    # necessary, but this example will dial the service once a day
+    # just to keep the status up to date. This would be most useful
+    # if you had a large number of services and you want to automate
+    # the process of regularly verifying the credentials are still valid.
+    interval: 24h
 
     # The following enables customization of the verification Pod
     # resource. All of these values are optional, and they are merged
@@ -107,22 +112,22 @@ spec:
       # Overrides for the containers are specified separately.
       # This way you can omit them from the pod override.
       containers:
-      # Overrides for the init Container. This container fetches
-      # the unmasked IP address from an external service and writes
-      # it to /shared/ip for the other containers.
+        # Overrides for the init Container. This container fetches
+        # the unmasked IP address from an external service and writes
+        # it to /shared/ip for the other containers.
         init:
           image: curlimages/curl:7.88.1
-      # Overrides for the VPN Container. This container connects
-      # to the VPN service using environment variables from the
-      # Provider's credentials Secret. As all containers in a pod
-      # share the same network, it will connect all containers
-      # to the VPN.
+        # Overrides for the VPN Container. This container connects
+        # to the VPN service using environment variables from the
+        # Provider's credentials Secret. As all containers in a pod
+        # share the same network, it will connect all containers
+        # to the VPN.
         vpn:
           image: qmcgaw/gluetun:latest
           imagePullPolicy: Always
-      # Overrides for the probe Container. This container is
-      # responsible for probing the IP service and exiting with
-      # code zero when it differs from the initial IP.
+        # Overrides for the probe Container. This container is
+        # responsible for probing the IP service and exiting with
+        # code zero when it differs from the initial IP.
         probe:
           image: curlimages/curl:7.88.1
 ```

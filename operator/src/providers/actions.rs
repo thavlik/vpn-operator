@@ -56,13 +56,13 @@ sleep $INITIAL_WAIT
 TIMEOUT=5 # IP service request timeout (seconds)
 INITIAL_IP=$(cat $IP_FILE_PATH) # created by init container
 echo \"Unmasked IP address is $INITIAL_IP\"
-IP=$(curl -s $IP_SERVICE)
+IP=$(curl -m $TIMEOUT -s $IP_SERVICE)
 ITER=0
 # IP service may fail or return the same IP address.
 while [ $? -ne 0 ] || [ \"$IP\" = \"$INITIAL_IP\" ]; do
     echo \"Current IP address is $IP, sleeping for $SLEEP_TIME\"
     sleep $SLEEP_TIME
-    IP=$(curl -s $IP_SERVICE)
+    IP=$(curl -m $TIMEOUT -s $IP_SERVICE)
     TIMEOUT=$((TIMEOUT + ITER)) # exponential timeout backoff
     SLEEP_TIME=$((SLEEP_TIME + ITER)) # exponential sleep backoff
     ITER=$((ITER + 1))

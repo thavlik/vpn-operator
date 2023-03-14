@@ -61,30 +61,30 @@ metadata:
   name: my-vpn
   namespace: default
   labels:
-  # You can optionally specify a label so that Masks
-  # have the ability to select this service at the
-  # exclusion of others.
+  # You can optionally specify a label so that Masks have the ability
+  # to select this service at the exclusion of others.
     vpn.beebs.dev/provider: my-example-vpn-label
 spec:
-  # In this example, the contractual terms with NordVPN
-  # allows up to six devices to be active simultaneously.
-  # This field is mandatory. You shouldn't attempt to
-  # create an obscene number of connections. Always set
-  # it to sane value for your purposes. 
+  # In this example, the contractual terms with NordVPN allows up to
+  # six devices to be active simultaneously. This field is mandatory.
+  # You shouldn't attempt to create an obscene number of connections.
+  # Always set it to sane value for your purposes. 
   maxSlots: 6
 
   # Corresponds to the above Secret's metadata.name
   secret: my-vpn-credentials
 
-  # The controller will attempt to verify that the
-  # VPN credentials are correct and the service works.
-  # It will do this by injecting the Secret's data as
-  # environment variables into a gluetun container and
-  # probing an IP service until it returns something
-  # different from the initial/unmasked IP address.
+  # The controller will attempt to verify that the VPN credentials
+  # are correct and the service works. It will do this by injecting
+  # the Secret's data as environment variables into a gluetun container
+  # and probing an IP service until it returns something different from
+  # the initial/unmasked IP address.
   # Note: all of these fields are optional.
   verify:
-    # Set to true to bypass credentials verification.
+    # Set to true to bypass credentials verification. This will allow
+    # the structure of the Secret to by anything you want, but the
+    # Provider will immediately enter the Active phase without truly
+    # knowing if the credentials are ready to use.
     skip: false
 
     # Amount of time that can elapse before verification is failed.
@@ -145,17 +145,14 @@ metadata:
   name: my-mask
   namespace: default
 spec:
-  # You can optionally require the Mask be assigned
-  # specific Providers. These value will correspond
-  # to Providers' metadata.labels["vpn.beebs.dev/provider"]
+  # You can optionally require the Mask be assigned specific Providers.
+  # These value will correspond to Providers' metadata.labels["vpn.beebs.dev/provider"]
   #providers: [my-example-vpn-label]
 ```
-
 4. Wait for the `Mask`'s phase to be `Active` before using it:
 ```bash
 kubectl get mask -Aw
 ```
-
 5. The `Mask`'s status object contains a reference to the VPN credentials Secret created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. as environment variables with [gluetun](https://github.com/qdm12/gluetun)).
 
 ## Chart Configuration

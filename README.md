@@ -152,7 +152,7 @@ spec:
 kubectl get mask -Aw
 ```
 
-5. The `Mask`'s status object contains a reference to the VPN credentials Secret created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. [gluetun](https://github.com/qdm12/gluetun)).
+5. The `Mask`'s status object contains a reference to the VPN credentials Secret created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. as environment variables with [gluetun](https://github.com/qdm12/gluetun)).
 
 ## Chart Configuration
 ```yaml

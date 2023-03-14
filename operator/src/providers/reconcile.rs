@@ -13,7 +13,10 @@ use tokio::time::Duration;
 #[cfg(metrics)]
 use crate::metrics::{PROVIDER_ACTION_COUNTER, PROVIDER_RECONCILE_COUNTER};
 
-use super::{actions, finalizer};
+use super::{
+    actions::{self, PROBE_CONTAINER_NAME},
+    finalizer,
+};
 use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
 pub use vpn_types::*;
 
@@ -369,7 +372,7 @@ lazy_static! {
     static ref DEFAULT_VERIFY_SPEC: ProviderVerifySpec = Default::default();
 }
 
-const DEFAULT_VERIFY_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_VERIFY_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Gets the verification pod for the Provider.
 async fn get_verify_pod(client: Client, name: &str, namespace: &str) -> Result<Option<Pod>, Error> {
@@ -395,7 +398,7 @@ fn get_pod_age(pod: &Pod) -> Result<Duration, Error> {
 
 /// Returns the amount of time the verification pod is allowed to run
 /// before it is considered a failure.
-fn get_probe_timeout(instance: &Provider) -> Duration {
+fn get_verify_timeout(instance: &Provider) -> Duration {
     instance
         .spec
         .verify
@@ -427,7 +430,7 @@ async fn determine_verify_pod_action(
                 return Ok(Some(ProviderAction::VerifyFailed(message)));
             }
             // Check if it's past the timeout.
-            if get_pod_age(pod)? > get_probe_timeout(instance) {
+            if get_pod_age(pod)? > get_verify_timeout(instance) {
                 return Ok(Some(ProviderAction::VerifyFailed(
                     "Verification timed out waiting for Pod to schedule.".to_owned(),
                 )));
@@ -442,7 +445,7 @@ async fn determine_verify_pod_action(
             // Make sure the verification pod isn't too old.
             // If it goes past the timeout, it doesn't matter what
             // phase it's in, it will be considered a failure.
-            if get_pod_age(pod)? > get_probe_timeout(instance) {
+            if get_pod_age(pod)? > get_verify_timeout(instance) {
                 return Ok(Some(ProviderAction::VerifyFailed(
                     "Timed out waiting for VPN connection.".to_owned(),
                 )));
@@ -452,13 +455,34 @@ async fn determine_verify_pod_action(
                 start_time: pod.metadata.creation_timestamp.clone(),
             }))
         }
+        // Since the probe container will exit with code 0, the pod
+        // may not be in the "Succeeded" phase. On my kubernetes
+        // cluster (DigitalOcean w/ containerd) the pods enter
+        // the phase NotReady, and the container status shows that
+        // the VPN connection was successful.
+        "NotReady"
+            if status
+                .container_statuses
+                .as_ref()
+                .map_or(None, |cs| {
+                    cs.iter().filter(|s| s.name == PROBE_CONTAINER_NAME).next()
+                })
+                .map_or(false, |cs| {
+                    cs.state.as_ref().map_or(false, |s| {
+                        s.terminated.as_ref().map_or(false, |t| t.exit_code == 0)
+                    })
+                }) =>
+        {
+            Ok(Some(ProviderAction::Verified))
+        }
         // Verification has completed (new IP obtained).
+        // This is what should be observed according to the
+        // Kubernetes docs, but it doesn't seem to be the case.
         "Succeeded" => Ok(Some(ProviderAction::Verified)),
         // Unknown error.
-        _ => Err(Error::UserInputError(format!(
-            "Unknown pod phase: {}",
-            phase
-        ))),
+        // TODO: post failure error message to status object.
+        _ => Ok(Some(ProviderAction::VerifyFailed(
+            "Unknown error occurred during verification.".to_owned()))),
     }
 }
 

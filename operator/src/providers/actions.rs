@@ -44,13 +44,18 @@ pub const IP_FILE_PATH: &str = concatcp!(SHARED_PATH, "/ip");
 /// modular paradigm of using sidecars.
 pub const DEFAULT_VPN_IMAGE: &str = "qmcgaw/gluetun:v3.32.0";
 
+/// The name of the probe container within the verify pod.
+pub const PROBE_CONTAINER_NAME: &str = "probe";
+
 /// The script used by the probe container to check if the
 /// VPN is connected. Requires the environment variables.
 const PROBE_SCRIPT: &str = "#!/bin/sh
 INITIAL_IP=$(cat $IP_FILE_PATH)
 echo \"Unmasked IP address is $INITIAL_IP\"
 IP=$(curl -s $IP_SERVICE)
-while [ \"$IP\" = \"$INITIAL_IP\" ]; do
+# IP service may fail or return the same IP address.
+while [ $? -ne 0 ] || [ \"$IP\" = \"$INITIAL_IP\" ]; do
+    echo \"Current IP address is $IP, sleeping for $SLEEP_TIME\"
     sleep $SLEEP_TIME
     IP=$(curl -s $IP_SERVICE)
 done
@@ -89,11 +94,11 @@ lazy_static! {
         ..Default::default()
     };
     static ref DEFAULT_PROBE_CONTAINER: Container = Container {
-        name: "probe".to_owned(),
+        name: PROBE_CONTAINER_NAME.to_owned(),
         image: Some(CURL_IMAGE.to_owned()),
         image_pull_policy: Some("IfNotPresent".to_owned()),
         command: Some(
-            vec!["sh", "-c", "\"$PROBE_SCRIPT\""]
+            vec!["sh", "-c", "echo \"$PROBE_SCRIPT\" | sh -"]
                 .into_iter()
                 .map(String::from)
                 .collect()

@@ -115,6 +115,7 @@ async fn get_test_provider(client: Client, name: &str, namespace: &str) -> Resul
             verify: Some(ProviderVerifySpec {
                 // Skip verification if we are using the mock credentials.
                 skip: Some(get_actual_provider_secret(client).await?.is_none()),
+                timeout: Some("50s".to_owned()),
                 ..Default::default()
             }),
             ..Default::default()
@@ -157,13 +158,20 @@ async fn create_test_provider(
     uid: &str,
 ) -> Result<Provider, Error> {
     let name = format!("{}-{}", PROVIDER_NAME, uid);
-    let provider = create_wait(
-        client.clone(),
-        &name,
-        namespace,
-        get_test_provider(client.clone(), &name, namespace).await?,
-    )
-    .await?;
+    //let provider = create_wait(
+    //    client.clone(),
+    //    &name,
+    //    namespace,
+    //    get_test_provider(client.clone(), &name, namespace).await?,
+    //)
+    //.await?;
+    let api: Api<Provider> = Api::namespaced(client.clone(), namespace);
+    let provider = api
+        .create(
+            &Default::default(),
+            &get_test_provider(client.clone(), &name, namespace).await?,
+        )
+        .await?;
     println!(
         "Created Provider with uid {}",
         provider.metadata.uid.as_deref().unwrap()
@@ -180,13 +188,52 @@ async fn create_test_mask(
     provider_label: &str,
 ) -> Result<Mask, Error> {
     let mask_name = format!("{}-{}", MASK_NAME, slot);
-    Ok(create_wait(
-        client,
-        &mask_name,
-        namespace,
-        get_test_mask(namespace, slot, provider_label),
-    )
-    .await?)
+    let api: Api<Mask> = Api::namespaced(client, namespace);
+    Ok(api
+        .create(
+            &Default::default(),
+            &get_test_mask(namespace, slot, provider_label),
+        )
+        .await?)
+    //Ok(create_wait(
+    //    client,
+    //    &mask_name,
+    //    namespace,
+    //    get_test_mask(namespace, slot, provider_label),
+    //)
+    //.await?)
+}
+
+/// Waits for the test Provider to be Active.
+async fn wait_for_provider_active(client: Client, namespace: &str) -> Result<(), Error> {
+    let provider_api: Api<Provider> = Api::namespaced(client, namespace);
+    let lp = ListParams::default().timeout(120);
+    let mut stream = provider_api.watch(&lp, "0").await?.boxed();
+    while let Some(event) = stream.try_next().await? {
+        match event {
+            WatchEvent::Added(m) | WatchEvent::Modified(m) => {
+                match m.status.as_ref().map_or(None, |s| s.phase) {
+                    Some(phase) if phase == ProviderPhase::Active => {
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    for provider in provider_api.list(&Default::default()).await?.items {
+        if let Some(ref status) = provider.status {
+            if let Some(phase) = status.phase {
+                if phase == ProviderPhase::Active {
+                    return Ok(());
+                }
+            }
+        }
+    }
+    Err(Error::Other(
+        "Provider not Active before timeout".to_owned(),
+    ))
 }
 
 /// Waits for the test Provider to be assigned to the test Mask.
@@ -328,7 +375,12 @@ async fn wait_for_secret(
 /// Creates a random test namespace and returns a tuple
 /// containing the test's UUID and the namespace name.
 async fn create_test_namespace(client: Client) -> Result<(String, String), Error> {
-    let uid = uuid::Uuid::new_v4().to_string();
+    let uid = uuid::Uuid::new_v4()
+        .to_string()
+        .split('-')
+        .next()
+        .unwrap()
+        .to_string();
     let name = format!("{}{}", NAMESPACE_PREFIX, uid);
     let namespace_api: Api<Namespace> = Api::all(client);
     let namespace = Namespace {
@@ -341,7 +393,7 @@ async fn create_test_namespace(client: Client) -> Result<(String, String), Error
     namespace_api
         .create(&Default::default(), &namespace)
         .await?;
-    Ok((uid, name))
+    Ok((uid.to_owned(), name))
 }
 
 async fn delete_namespace(client: Client, name: &str) -> Result<(), Error> {
@@ -362,10 +414,16 @@ async fn basic() -> Result<(), Error> {
     let provider_label = format!("{}-{}", PROVIDER_NAME, uid);
 
     // Create the test Provider.
+    let provider_active = {
+        let client = client.clone();
+        let namespace = namespace.clone();
+        spawn(async move { wait_for_provider_active(client, &namespace).await })
+    };
     let provider = create_test_provider(client.clone(), &namespace, &uid)
         .await
         .expect("failed to create provider");
     let provider_uid = provider.metadata.uid.as_deref().unwrap();
+    provider_active.await.unwrap()?;
 
     // Watch for a Provider to be assigned to the Mask.
     let mask_secret = {
@@ -614,43 +672,43 @@ where
     }
 }
 
-async fn create_wait<
-    T: Clone + Resource + CustomResourceExt + Serialize + DeserializeOwned + Debug,
->(
-    client: Client,
-    name: &str,
-    namespace: &str,
-    resource: T,
-) -> Result<T, Error>
-where
-    <T as Resource>::DynamicType: Default,
-    T: Resource<Scope = NamespaceResourceScope>,
-{
-    let api: Api<T> = Api::namespaced(client, namespace);
-    let start = std::time::SystemTime::now();
-    let timeout = std::time::Duration::from_secs(12);
-    loop {
-        match api.create(&Default::default(), &resource).await {
-            Ok(mask) => return Ok(mask),
-            Err(kube::Error::Api(ae)) if ae.code == 409 => {
-                if start.elapsed().unwrap() > timeout {
-                    panic!(
-                        "Timed out waiting for {} {}/{} to be deleted",
-                        T::crd().metadata.name.as_deref().unwrap(),
-                        namespace,
-                        name
-                    );
-                }
-                // Try and delete it again.
-                match api.delete(name, &Default::default()).await {
-                    Ok(_) => {}
-                    Err(kube::Error::Api(ae)) if ae.code == 404 => {}
-                    Err(e) => return Err(e.into()),
-                }
-                // Sleep and try again
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            }
-            Err(e) => return Err(e.into()),
-        }
-    }
-}
+//async fn create_wait<
+//    T: Clone + Resource + CustomResourceExt + Serialize + DeserializeOwned + Debug,
+//>(
+//    client: Client,
+//    name: &str,
+//    namespace: &str,
+//    resource: T,
+//) -> Result<T, Error>
+//where
+//    <T as Resource>::DynamicType: Default,
+//    T: Resource<Scope = NamespaceResourceScope>,
+//{
+//    let api: Api<T> = Api::namespaced(client, namespace);
+//    let start = std::time::SystemTime::now();
+//    let timeout = std::time::Duration::from_secs(12);
+//    loop {
+//        match api.create(&Default::default(), &resource).await {
+//            Ok(mask) => return Ok(mask),
+//            Err(kube::Error::Api(ae)) if ae.code == 409 => {
+//                if start.elapsed().unwrap() > timeout {
+//                    panic!(
+//                        "Timed out waiting for {} {}/{} to be deleted",
+//                        T::crd().metadata.name.as_deref().unwrap(),
+//                        namespace,
+//                        name
+//                    );
+//                }
+//                // Try and delete it again.
+//                match api.delete(name, &Default::default()).await {
+//                    Ok(_) => {}
+//                    Err(kube::Error::Api(ae)) if ae.code == 404 => {}
+//                    Err(e) => return Err(e.into()),
+//                }
+//                // Sleep and try again
+//                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+//            }
+//            Err(e) => return Err(e.into()),
+//        }
+//    }
+//}

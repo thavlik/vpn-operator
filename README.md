@@ -216,7 +216,7 @@ Your application is responsible for monitoring the status of your `Mask` and kil
 Note: Some VPN services like SurfShark reserve the right to ban you for abusing their generous "unlimited devices" policies. In such cases, it's recommended to use a relatively low `spec.maxSlots` for the `Provider`.
 
 ### Scaling
-While the controller code is fully capable of concurrent reconciliations, scaling is not as simple as increasing the number of replicas in the deployments. I have ideas for how to scale horizontally, so please open an issue if you encounter problems scaling vertically.
+While the controller code is fully capable of concurrent reconciliations, scaling is not as simple as increasing the number of replicas in the deployments. I have ideas for how to scale horizontally, so please open an issue if you encounter problems with scaling vertically.
 
 ### Development
 Notes on the operator code itself can be found in [operator/README.md](operator/README.md).

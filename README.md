@@ -205,22 +205,21 @@ While the controller code is fully capable of concurrent reconciliations, scalin
 controllers:
   # The Mask controller has its own Deployment.
   masks:
-    # These values are plugged directly into the
-    # Deployment's pod template specification.
+    # These values are plugged directly into the Deployment's
+    # pod template specification.
     resources:
       requests:
-      # If you are unsure on what resources your
-      # application needs, refer to kube-prometheus
-      # to measure CPU and RAM usage in real time.
+      # If you are unsure on what resources your application
+      # needs, refer to kube-prometheus to measure CPU and
+      # RAM usage in real time.
         memory: 96Mi
         cpu: 100m
-      # Set a limit to the resources the controller
-      # is able to consume when it's under full load:
+      # Set a limit to the resources the controller is able
+      # to consume when it's under full load:
       limits:
         memory: 192Mi
         cpu: 400m
-  # Controller for Provider resources also has
-  # its own Deployment.
+  # Controller for Provider resources also has its own Deployment.
   providers:
     resources:
       requests:

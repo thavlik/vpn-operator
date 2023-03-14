@@ -11,7 +11,7 @@ use tokio::time::Duration;
 pub use vpn_types::*;
 
 #[cfg(metrics)]
-use crate::metrics::{MASK_ACTION_COUNTER, MASK_RECONCILE_COUNTER, MASK_WRITE_PERF};
+use crate::metrics::{MASK_ACTION_COUNTER, MASK_RECONCILE_COUNTER, MASK_WRITE_HISTOGRAM};
 
 use super::{
     actions::{self, owns_reservation},
@@ -136,9 +136,13 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
     // Read phase of reconciliation determines goal during the write phase.
     let action = determine_action(client.clone(), &name, &namespace, &instance).await?;
 
+    if action != MaskAction::NoOp {
+        println!("{}/{} ACTION: {:?}", namespace, name, action);
+    }
+
     // Report the read phase performance.
     #[cfg(metrics)]
-    MASK_READ_PERF
+    MASK_READ_HISTOGRAM
         .with_label_values(&[&name, &namespace, action.into()])
         .observe(start.elapsed().as_secs_f64());
 
@@ -155,15 +159,11 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
         MaskAction::NoOp => None,
         // Start a performance timer for the write phase.
         _ => Some(
-            MASK_WRITE_PERF
+            MASK_WRITE_HISTOGRAM
                 .with_label_values(&[&name, &namespace, action.into()])
                 .start_timer(),
         ),
     };
-
-    if action != MaskAction::NoOp {
-        println!("{}/{} ACTION: {:?}", namespace, name, action);
-    }
 
     // Performs action as decided by the `determine_action` function.
     // This is the write phase of reconciliation.

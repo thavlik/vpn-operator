@@ -12,41 +12,55 @@ use prometheus::{Counter, CounterVec, Encoder, Gauge, HistogramVec, TextEncoder}
 
 /// The prefix to add to all the prometheus metrics keys.
 const METRICS_PREFIX: &str = "vpno_";
+const MASK_METRICS_PREFIX: &str = concatcp!(METRICS_PREFIX, "provider_");
+const PROVIDER_METRICS_PREFIX: &str = concatcp!(METRICS_PREFIX, "mask_");
 
 lazy_static! {
     pub static ref MASK_RECONCILE_COUNTER: CounterVec = register_counter_vec!(
-        concatcp!(METRICS_PREFIX, "mask_reconcile_counter"),
+        concatcp!(MASK_METRICS_PREFIX, "reconcile_counter"),
         "Number of reconciliations by the mask controller.",
         &["name", "namespace"]
     )
     .unwrap();
     static ref MASK_ACTION_COUNTER: CounterVec = register_counter_vec!(
-        concatcp!(METRICS_PREFIX, "mask_action_counter"),
+        concatcp!(MASK_METRICS_PREFIX, "action_counter"),
         "Number of actions taken by the mask controller.",
         &["name", "namespace", "action"]
     )
     .unwrap();
-    static ref MASK_READ_PERF: HistogramVec = register_histogram_vec!(
-        concatcp!(METRICS_PREFIX, "mask_action_read_perf"),
-        "Amount of time taken by the read phase of the mask controller.",
+    static ref MASK_READ_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        concatcp!(MASK_METRICS_PREFIX, "read_duration_seconds"),
+        "Amount of time taken by the read phase of the Mask controller.",
         &["name", "namespace", "action"]
     )
     .unwrap();
-    static ref MASK_WRITE_PERF: HistogramVec = register_histogram_vec!(
-        concatcp!(METRICS_PREFIX, "mask_action_write_perf"),
-        "Amount of time taken by the write phase of the mask controller.",
+    static ref MASK_WRITE_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        concatcp!(MASK_METRICS_PREFIX, "write_duration_seconds"),
+        "Amount of time taken by the write phase of the Mask controller.",
         &["name", "namespace", "action"]
     )
     .unwrap();
     pub static ref PROVIDER_RECONCILE_COUNTER: CounterVec = register_counter_vec!(
-        concatcp!(METRICS_PREFIX, "provider_reconcile_counter"),
+        concatcp!(PROVIDER_METRICS_PREFIX, "reconcile_counter"),
         "Number of reconciliations by the provider controller.",
         &["name", "namespace"]
     )
     .unwrap();
     static ref PROVIDER_ACTION_COUNTER: CounterVec = register_counter_vec!(
-        concatcp!(METRICS_PREFIX, "provider_action_counter"),
+        concatcp!(PROVIDER_METRICS_PREFIX, "action_counter"),
         "Number of actions taken by the provider controller.",
+        &["name", "namespace", "action"]
+    )
+    .unwrap();
+    static ref PROVIDER_READ_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        concatcp!(PROVIDER_METRICS_PREFIX, "read_duration_seconds"),
+        "Amount of time taken by the read phase of the Provider controller.",
+        &["name", "namespace", "action"]
+    )
+    .unwrap();
+    static ref PROVIDER_WRITE_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        concatcp!(PROVIDER_METRICS_PREFIX, "write_duration_seconds"),
+        "Amount of time taken by the write phase of the Provider controller.",
         &["name", "namespace", "action"]
     )
     .unwrap();

@@ -132,6 +132,10 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
         .with_label_values(&[&name, &namespace])
         .inc();
 
+    // Benchmark the read phase of reconciliation.
+    #[cfg(metrics)]
+    let start = std::time::Instant::now();
+
     // Read phase of reconciliation determines goal during the write phase.
     let action = determine_action(client.clone(), &name, &namespace, &instance).await?;
 
@@ -139,14 +143,34 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
         println!("{}/{} ACTION: {:?}", namespace, name, action);
     }
 
+    // Report the read phase performance.
+    #[cfg(metrics)]
+    PROVIDER_READ_HISTOGRAM
+        .with_label_values(&[&name, &namespace, action.into()])
+        .observe(start.elapsed().as_secs_f64());
+
+    // Increment the counter for the action.
     #[cfg(metrics)]
     PROVIDER_ACTION_COUNTER
         .with_label_values(&[&name, &namespace, action.into()])
         .inc();
 
+    // Benchmark the write phase of reconciliation.
+    #[cfg(metrics)]
+    let timer = match action {
+        // Don't measure time for NoOp actions.
+        ProviderAction::NoOp => None,
+        // Start a performance timer for the write phase.
+        _ => Some(
+            PROVIDER_WRITE_HISTOGRAM
+                .with_label_values(&[&name, &namespace, action.into()])
+                .start_timer(),
+        ),
+    };
+
     // Performs action as decided by the `determine_action` function.
     // This is the write phase of reconciliation.
-    match action {
+    let result = match action {
         ProviderAction::Pending => {
             // Give the `Provider` resource a finalizer.
             let instance = finalizer::add(client.clone(), &name, &namespace).await?;
@@ -155,14 +179,14 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             actions::pending(client, &instance).await?;
 
             // Requeue immediately.
-            Ok(Action::requeue(Duration::ZERO))
+            Action::requeue(Duration::ZERO)
         }
         ProviderAction::AddFinalizer => {
             // Ensure the finalizer is present on the `Provider` resource.
             finalizer::add(client, &name, &namespace).await?;
 
             // Requeue immediately.
-            Ok(Action::requeue(Duration::ZERO))
+            Action::requeue(Duration::ZERO)
         }
         ProviderAction::Delete => {
             // Delete the verification pod.
@@ -177,14 +201,14 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             finalizer::delete(client, &name, &namespace).await?;
 
             // No need to requeue as the resource is being deleted.
-            Ok(Action::await_change())
+            Action::await_change()
         }
         ProviderAction::SecretNotFound(secret_name) => {
             // Reflect the error in the status object.
             actions::secret_missing(client, &instance, &secret_name).await?;
 
             // Requeue after a while if the resource doesn't change.
-            Ok(Action::requeue(PROBE_INTERVAL))
+            Action::requeue(PROBE_INTERVAL)
         }
         ProviderAction::Verify => {
             // Ensure the finalizer is present on the `Provider` resource.
@@ -198,14 +222,14 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             actions::verify_progress(client, &instance, pod.metadata.creation_timestamp).await?;
 
             // Requeue after a short delay to allow the verification time to complete.
-            Ok(Action::requeue(PROBE_INTERVAL))
+            Action::requeue(PROBE_INTERVAL)
         }
         ProviderAction::Verifying { start_time } => {
             // Post the progress to the status object.
             actions::verify_progress(client, &instance, start_time).await?;
 
             // Requeue after a short delay to allow the verification time to complete.
-            Ok(Action::requeue(PROBE_INTERVAL))
+            Action::requeue(PROBE_INTERVAL)
         }
         ProviderAction::VerifyFailed(message) => {
             // Update the phase of the `Provider` resource to Verified.
@@ -215,7 +239,7 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             actions::delete_verify_pod(client, &name, &namespace).await?;
 
             // Requeue after a delay so the user has time to see the error phase.
-            Ok(Action::requeue(PROBE_INTERVAL))
+            Action::requeue(PROBE_INTERVAL)
         }
         ProviderAction::Verified => {
             // Set the timestamp of when the verification completed.
@@ -225,18 +249,25 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             actions::delete_verify_pod(client, &name, &namespace).await?;
 
             // Requeue immediately to proceed with reconciliation.
-            Ok(Action::requeue(Duration::ZERO))
+            Action::requeue(Duration::ZERO)
         }
         ProviderAction::Active { active_slots } => {
             // Update the phase of the `Provider` resource to Active.
             actions::active(client, &instance, active_slots).await?;
 
             // Requeue after a short delay.
-            Ok(Action::requeue(PROBE_INTERVAL))
+            Action::requeue(PROBE_INTERVAL)
         }
         // The resource is already in desired state, do nothing and re-check after 10 seconds
-        ProviderAction::NoOp => Ok(Action::requeue(PROBE_INTERVAL)),
+        ProviderAction::NoOp => Action::requeue(PROBE_INTERVAL),
+    };
+
+    #[cfg(metrics)]
+    if let Some(timer) = timer {
+        timer.observe_duration();
     }
+
+    Ok(result)
 }
 
 /// needs_pending returns true if the `Provider` resource

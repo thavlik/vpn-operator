@@ -13,15 +13,14 @@ kubectl apply -f crds/
 ```bash
 # Create your chart configuration file.
 cat <<EOF | echo "$(</dev/stdin)" > values.yaml
-# In this example, we're exposing prometheus metrics
-# for the controllers but disabling PodMonitor creation.
+# In this example, we're exposing Prometheus metrics
+# for the controllers and enabling PodMonitor creation.
 # This is what you would want to do if your cluster
-# has a custom method for scraping the pods' metrics.
-# PodMonitor is a Custom Resource from kube-prometheus:
+# uses kube-prometheus:
 # https://github.com/prometheus-operator/kube-prometheus
 prometheus:
   expose: true
-  podMonitors: false
+  podMonitors: true
 EOF
 
 # Install the chart into the `vpn` namespace.

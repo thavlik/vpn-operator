@@ -26,6 +26,18 @@ lazy_static! {
         &["name", "namespace", "action"]
     )
     .unwrap();
+    static ref MASK_READ_PERF: HistogramVec = register_histogram_vec!(
+        concatcp!(METRICS_PREFIX, "mask_action_read_perf"),
+        "Amount of time taken by the read phase of the mask controller.",
+        &["name", "namespace", "action"]
+    )
+    .unwrap();
+    static ref MASK_WRITE_PERF: HistogramVec = register_histogram_vec!(
+        concatcp!(METRICS_PREFIX, "mask_action_write_perf"),
+        "Amount of time taken by the write phase of the mask controller.",
+        &["name", "namespace", "action"]
+    )
+    .unwrap();
     pub static ref PROVIDER_RECONCILE_COUNTER: CounterVec = register_counter_vec!(
         concatcp!(METRICS_PREFIX, "provider_reconcile_counter"),
         "Number of reconciliations by the provider controller.",

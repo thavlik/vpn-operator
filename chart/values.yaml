@@ -1,24 +1,44 @@
+# Container image to use for the controllers.
 image: thavlik/vpn-operator:latest
+
+# Pull policy for the controller image.
 imagePullPolicy: Always
 
-# Prometheus metrics configuration.
+# Prometheus metrics configuration. See kube-prometheus:
+# https://github.com/prometheus-operator/kube-prometheus
 prometheus:
-  # Run the prometheus metrics server on the controllers.
+  # Run the metrics server with the controllers. This will
+  # report on the actions taken as well as how how much
+  # time elapses between their read/write phases.
+  # All keys are prefixed with 'vpno_'
   expose: true
 
   # Create PodMonitor resources for the controllers.
   # This value may be false while `expose` is true if you
-  # want to scrape the controller pods with another method.
+  # want to scrape the controller pods using another method.
   podMonitors: true
 
+# The Mask and Provider resources have separate Deployments.
+# This improves scaling and allows you to configure their
+# resource budgets separately.
+# Note: the current values are not based on any empirical
+# profiling. They are just a starting point and require
+# fine-tuning for future releases, but should be more than
+# enough for most scenarios.
 controllers:
   masks:
     resources:
+      requests:
+        memory: 32Mi
+        cpu: 10m
       limits:
         memory: 128Mi
         cpu: 100m
   providers:
     resources:
+      requests:
+        memory: 32Mi
+        cpu: 10m
       limits:
         memory: 128Mi
         cpu: 100m

@@ -11,7 +11,7 @@ use tokio::time::Duration;
 pub use vpn_types::*;
 
 #[cfg(metrics)]
-use crate::metrics::{MASK_ACTION_COUNTER, MASK_RECONCILE_COUNTER};
+use crate::metrics::{MASK_ACTION_COUNTER, MASK_RECONCILE_COUNTER, MASK_WRITE_PERF};
 
 use super::{
     actions::{self, owns_reservation},
@@ -123,32 +123,57 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
     // Name of the Mask resource is used to name the subresources as well.
     let name = instance.name_any();
 
+    // Increment total number of reconciles for the Mask resource.
     #[cfg(metrics)]
     MASK_RECONCILE_COUNTER
         .with_label_values(&[&name, &namespace])
         .inc();
 
+    // Benchmark the read phase of reconciliation.
+    #[cfg(metrics)]
+    let start = std::time::Instant::now();
+
     // Read phase of reconciliation determines goal during the write phase.
     let action = determine_action(client.clone(), &name, &namespace, &instance).await?;
 
-    if action != MaskAction::NoOp {
-        println!("{}/{} ACTION: {:?}", namespace, name, action);
-    }
+    // Report the read phase performance.
+    #[cfg(metrics)]
+    MASK_READ_PERF
+        .with_label_values(&[&name, &namespace, action.into()])
+        .observe(start.elapsed().as_secs_f64());
 
+    // Increment the counter for the action.
     #[cfg(metrics)]
     MASK_ACTION_COUNTER
         .with_label_values(&[&name, &namespace, action.into()])
         .inc();
 
+    // Benchmark the write phase of reconciliation.
+    #[cfg(metrics)]
+    let timer = match action {
+        // Don't measure time for NoOp actions.
+        MaskAction::NoOp => None,
+        // Start a performance timer for the write phase.
+        _ => Some(
+            MASK_WRITE_PERF
+                .with_label_values(&[&name, &namespace, action.into()])
+                .start_timer(),
+        ),
+    };
+
+    if action != MaskAction::NoOp {
+        println!("{}/{} ACTION: {:?}", namespace, name, action);
+    }
+
     // Performs action as decided by the `determine_action` function.
     // This is the write phase of reconciliation.
-    match action {
+    let result = match action {
         MaskAction::Pending => {
             // Update the phase of the `Provider` resource to Pending.
             actions::pending(client, &instance).await?;
 
             // Requeue immediately.
-            Ok(Action::requeue(Duration::ZERO))
+            Action::requeue(Duration::ZERO)
         }
         MaskAction::Assign => {
             // Remove any current provider from the Mask's status object.
@@ -166,7 +191,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             }
 
             // Requeue immediately to set the phase to "Active".
-            Ok(Action::requeue(Duration::ZERO))
+            Action::requeue(Duration::ZERO)
         }
         MaskAction::Delete => {
             // Delete the reservation ConfigMap from the Provider's namespace.
@@ -179,25 +204,32 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             finalizer::delete(client, &name, &namespace).await?;
 
             // Makes no sense to requeue after deleting, as the resource is gone.
-            Ok(Action::await_change())
+            Action::await_change()
         }
         MaskAction::Active => {
             // Update the phase to Active.
             actions::active(client.clone(), &instance).await?;
 
             // Resource is fully reconciled.
-            Ok(Action::requeue(PROBE_INTERVAL))
+            Action::requeue(PROBE_INTERVAL)
         }
         MaskAction::CreateSecret => {
             // Create the credentials env secret in the Mask's namespace.
             actions::create_secret(client.clone(), &namespace, &instance).await?;
 
             // Requeue immediately to set the phase to Active.
-            Ok(Action::requeue(Duration::ZERO))
+            Action::requeue(Duration::ZERO)
         }
         // The resource is already in desired state, do nothing and re-check after 10 seconds
-        MaskAction::NoOp => Ok(Action::requeue(PROBE_INTERVAL)),
+        MaskAction::NoOp => Action::requeue(PROBE_INTERVAL),
+    };
+
+    #[cfg(metrics)]
+    if let Some(timer) = timer {
+        timer.observe_duration();
     }
+
+    Ok(result)
 }
 
 /// Returns the phase of the Mask.

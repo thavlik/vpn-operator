@@ -25,6 +25,8 @@ prometheus:
 EOF
 
 # Install the chart into the `vpn` namespace.
+# Refer to chart/values.yaml for details on how to
+# configure installation.
 RELEASE_NAME=vpn
 CHART_PATH=chart/
 helm install \
@@ -152,20 +154,41 @@ kubectl get mask -Aw
 
 5. The `Mask`'s status object contains a reference to the VPN credentials Secret created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. [gluetun](https://github.com/qdm12/gluetun)).
 
+## Chart Configuration
+```yaml
+```
+
 ## Scaling
 While the controller code is fully capable of concurrent reconciliations, scaling is not as simple as increasing the number of replicas in the deployments. I have ideas for how to scale horizontally, so please open an issue if you encounter problems scaling vertically. This can done by adjusting your `values.yaml` file:
 ```yaml
 controllers:
+  # The Mask controller has its own Deployment.
   masks:
+    # These values are plugged directly into the
+    # Deployment's pod template specification.
     resources:
+      requests:
+      # If you are unsure on what resources your
+      # application needs, refer to kube-prometheus
+      # to measure CPU and RAM usage in real time.
+        memory: 96Mi
+        cpu: 100m
+      # Set a limit to the resources the controller
+      # is able to consume when it's under full load:
       limits:
         memory: 192Mi
         cpu: 400m
+  # Controller for Provider resources also has
+  # its own Deployment.
   providers:
     resources:
-      limits:
-        memory: 192Mi
-        cpu: 400m
+      requests:
+        memory: 96Mi
+        cpu: 100m
+    # You can disable resource limits by omitting them.
+    #  limits:
+    #    memory: 192Mi
+    #    cpu: 400m
 ```
 
 ## Notes
@@ -186,6 +209,11 @@ Note: Some VPN services like SurfShark reserve the right to ban you for abusing 
 
 ### Development
 Notes on the operator code itself can be found in [operator/README.md](operator/README.md).
+
+### Choosing a VPN service
+Some services are more amenable for use with vpn-operator than others. Maximum number of connected devices is an important contractual detail.
+
+It's probably worth paying a premium to have access to a larger pool of IPs across more regions. For example, when using a `Mask` to download a video using a cloaked `Pod` (such as with [ytdl-operator](https://github.com/thavlik/ytdl-operator)), failed attempts due to constantly using banned IPs will slow overall progress more than if the service's bandwidth were reduced. Slow downloads are acceptable as long the service is reliable.
 
 ## License
 All code in this repository is released under [MIT](LICENSE-MIT) / [Apache 2.0](LICENSE-Apache) dual license, which is extremely permissive. Please open an issue if somehow these terms are insufficient.

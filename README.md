@@ -62,8 +62,10 @@ metadata:
   namespace: default
   labels:
   # You can optionally specify a label so that Masks have the ability
-  # to select this service at the exclusion of others.
-    vpn.beebs.dev/provider: my-example-vpn-label
+  # to select this service at the exclusion of others. Multiple labels
+  # can be specified by separating them with commas. This Provider will
+  # match the labels "my-vpn" or "default".
+    vpn.beebs.dev/provider: my-vpn,default
 spec:
   # In this example, the contractual terms with NordVPN allows up to
   # six devices to be active simultaneously. This field is mandatory.

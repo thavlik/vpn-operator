@@ -61,7 +61,7 @@ metadata:
   name: my-vpn
   namespace: default
   labels:
-    # You can optionally specify a label so that Masks have the ability
+    # You can optionally specify label(s) so that Masks have the ability
     # to select this service at the exclusion of others. Multiple labels
     # can be specified by separating them with commas. This Provider will
     # match the labels "my-vpn" or "default".
@@ -153,7 +153,7 @@ metadata:
 spec:
   # You can optionally require the Mask be assigned specific Providers.
   # These value will correspond to Providers' metadata.labels["vpn.beebs.dev/provider"]
-  #providers: [my-example-vpn-label]
+  #providers: ["my-vpn"]
 ```
 
 4. Wait for the `Mask`'s phase to be `Active` before using it:

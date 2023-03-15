@@ -179,6 +179,50 @@ async fn assign_provider_base(
     Ok(false)
 }
 
+/// Assign a Provider to a Mask that is meant for verifying the service.
+/// This will skip checks on the Provider's status, only failing if there
+/// are no empty slots available.
+pub async fn assign_verify_provider(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    instance: &Mask,
+    provider_uid: &str,
+) -> Result<bool, Error> {
+    // Get the Provider resource we are verifying.
+    let provider_api: Api<Provider> = Api::namespaced(client.clone(), namespace);
+    let provider = provider_api
+        .list(&Default::default())
+        .await?
+        .items
+        .into_iter()
+        .filter(|p| p.metadata.uid.as_deref() == Some(provider_uid))
+        .next()
+        .ok_or_else(|| {
+            Error::UserInputError(format!(
+                "Provider with uid {} not found in namespace {}",
+                provider_uid, namespace
+            ))
+        })?;
+    // Only assign the Provider that the Mask is meant to verify.
+    if try_reserve_slot(client.clone(), name, namespace, instance, &provider).await? {
+        // Provider had an open slot and it was reserved.
+        return Ok(true);
+    }
+    // Prune and try again.
+    if prune_provider(client.clone(), &provider).await? {
+        if try_reserve_slot(client.clone(), name, namespace, instance, &provider).await? {
+            return Ok(true);
+        }
+    }
+    patch_status(client, instance, |status| {
+        status.phase = Some(MaskPhase::Waiting);
+        status.message = Some("Waiting on a slot from the Provider.".to_owned());
+    })
+    .await?;
+    return Ok(false);
+}
+
 /// Assigns a new Provider to the Mask. Prunes and retries if necessary.
 /// Returns true if a Provider was assigned, false otherwise.
 pub async fn assign_provider(
@@ -197,38 +241,7 @@ pub async fn assign_provider(
         .as_ref()
         .map_or(None, |l| l.get(VERIFICATION_LABEL).map(|v| v.as_str()))
     {
-        // Get the Provider resource we are verifying.
-        let provider_api: Api<Provider> = Api::namespaced(client.clone(), namespace);
-        let provider = provider_api
-            .list(&Default::default())
-            .await?
-            .items
-            .into_iter()
-            .filter(|p| p.metadata.uid.as_deref() == Some(provider_uid))
-            .next()
-            .ok_or_else(|| {
-                Error::UserInputError(format!(
-                    "Provider with uid {} not found in namespace {}",
-                    provider_uid, namespace
-                ))
-            })?;
-        // Only assign the Provider that the Mask is meant to verify.
-        if try_reserve_slot(client.clone(), name, namespace, instance, &provider).await? {
-            // Provider had an open slot and it was reserved.
-            return Ok(true);
-        }
-        // Prune and try again.
-        if prune_provider(client.clone(), &provider).await? {
-            if try_reserve_slot(client.clone(), name, namespace, instance, &provider).await? {
-                return Ok(true);
-            }
-        }
-        patch_status(client, instance, |status| {
-            status.phase = Some(MaskPhase::Waiting);
-            status.message = Some("Waiting on a slot from the Provider.".to_owned());
-        })
-        .await?;
-        return Ok(false);
+        return assign_verify_provider(client, name, namespace, instance, provider_uid).await;
     }
 
     // See if there are any providers available.

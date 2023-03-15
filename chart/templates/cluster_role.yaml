@@ -20,10 +20,20 @@ rules:
     resources:
       - providers
       - providers/status
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups: ["vpn.beebs.dev"]
+    resources:
       - masks
       - masks/status
     verbs:
       - get
+      - create
+      - delete
       - list
       - patch
       - update

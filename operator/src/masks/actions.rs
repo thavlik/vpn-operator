@@ -1,8 +1,8 @@
-use crate::util::{patch::*, PROVIDER_NAME_LABEL, PROVIDER_UID_LABEL};
+use crate::util::{patch::*, Error, PROVIDER_NAME_LABEL, PROVIDER_UID_LABEL, VERIFICATION_LABEL};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::{
     api::{DeleteParams, ObjectMeta, PostParams, Resource},
-    Api, Client, Error,
+    Api, Client,
 };
 use std::collections::BTreeMap;
 use vpn_types::*;
@@ -54,8 +54,8 @@ pub async fn unassign_provider(
 /// matching vpn.beebs.dev/provider label will be returned.
 async fn list_active_providers(
     client: Client,
-    filter: Option<&Vec<String>>,
-    mask_namespace: Option<&str>,
+    filter_labels: Option<&Vec<String>>,
+    mask_namespace: &str,
 ) -> Result<Vec<Provider>, Error> {
     let api: Api<Provider> = Api::all(client);
     let mut providers: Vec<Provider> = api
@@ -64,34 +64,102 @@ async fn list_active_providers(
         .into_iter()
         .filter(|p| p.metadata.deletion_timestamp.is_none())
         .filter(|p| {
+            // Filter out Providers that have namespace preferences.
+            // If the Provider has no namespace preferences, it is
+            // assumed to be available in all namespaces.
+            p.spec
+                .namespaces
+                .as_ref()
+                .map_or(true, |ns| ns.iter().any(|n| n == mask_namespace))
+        })
+        .filter(|p| {
+            // Ignore Providers that aren't in the Active phase.
             p.status
                 .as_ref()
                 .map_or(false, |s| s.phase == Some(ProviderPhase::Active))
         })
+        .filter(|p| {
+            // Ignore Providers that have reached their capacity.
+            p.status
+                .as_ref()
+                .map_or(None, |s| s.active_slots)
+                .map_or(false, |a| a < p.spec.max_slots)
+        })
         .collect();
-    if let Some(mask_namepace) = mask_namespace {
-        providers = providers
-            .into_iter()
-            .filter(|p| {
-                p.spec
-                    .namespaces
-                    .as_ref()
-                    .map_or(false, |ns| ns.iter().any(|n| n == mask_namepace))
-            })
-            .collect();
-    }
-    if let Some(ref filter) = filter {
+    if let Some(ref filter_labels) = filter_labels {
+        // The Mask is asking for a specific Provider.
+        // Only return Providers with a matching label.
         providers = providers
             .into_iter()
             .filter(|p| {
                 p.metadata.labels.as_ref().map_or(false, |l| {
-                    l.get(PROVIDER_NAME_LABEL)
-                        .map_or(false, |v| filter.contains(v))
+                    l.get(PROVIDER_NAME_LABEL).as_ref().map_or(false, |v| {
+                        v.split(",").any(|p| filter_labels.iter().any(|l| l == p))
+                    })
                 })
             })
             .collect();
     }
     Ok(providers)
+}
+
+// Attempts to reserve a slot with the Provider. Returns true
+// if a slot was reserved, false otherwise.
+async fn try_reserve_slot(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    instance: &Mask,
+    provider: &Provider,
+) -> Result<bool, Error> {
+    let owner_uid = instance.metadata.uid.as_deref().unwrap();
+    let provider_name = provider.metadata.name.as_deref().unwrap();
+    let provider_namespace = provider.metadata.namespace.as_deref().unwrap();
+    let slots = list_inactive_slots(client.clone(), provider).await?;
+    for slot in slots {
+        // Try and take the slot.
+        match create_reservation(
+            client.clone(),
+            name,
+            namespace,
+            provider,
+            slot,
+            owner_uid.to_owned(),
+        )
+        .await
+        {
+            // Slot was reserved successfully.
+            Ok(_) => {}
+            // Slot is already reserved.
+            Err(kube::Error::Api(e)) if e.code == 409 => continue,
+            // Unknown failure reserving slot.
+            Err(e) => return Err(e.into()),
+        }
+        let msg = format!(
+            "reserved slot {} for Provider {}/{}",
+            slot, provider_namespace, provider_name,
+        );
+        println!("Mask {}/{} {}", namespace, name, msg);
+        // Patch the Mask resource to assign the Provider.
+        let provider_uid = provider.metadata.uid.clone().unwrap();
+        patch_status(client, instance, move |status| {
+            let secret = format!("{}-{}", name, &provider_uid);
+            status.provider = Some(AssignedProvider {
+                name: provider_name.to_owned(),
+                namespace: provider_namespace.to_owned(),
+                uid: provider_uid,
+                slot,
+                secret,
+            });
+            status.message = Some(msg);
+        })
+        .await?;
+        // Next reconciliation will create the credentials Secret,
+        // after which the Mask's phase will be updated to Active.
+        return Ok(true);
+    }
+    // Failed to reserve a slot with the Provider.
+    Ok(false)
 }
 
 /// Assigns a new Provider to the Mask. Returns true
@@ -103,51 +171,8 @@ async fn assign_provider_base(
     instance: &Mask,
     providers: &Vec<Provider>,
 ) -> Result<bool, Error> {
-    let owner_uid = instance.metadata.uid.as_deref().unwrap();
     for provider in providers {
-        let provider_name = provider.metadata.name.as_deref().unwrap();
-        let provider_namespace = provider.metadata.namespace.as_deref().unwrap();
-        for slot in list_inactive_slots(client.clone(), provider).await? {
-            // Try and take the slot.
-            match create_reservation(
-                client.clone(),
-                name,
-                namespace,
-                provider,
-                format!("{}-{}", provider_name, slot),
-                provider_namespace,
-                owner_uid.to_owned(),
-            )
-            .await
-            {
-                // Slot was reserved successfully.
-                Ok(_) => {}
-                // Slot is already reserved.
-                Err(Error::Api(e)) if e.code == 409 => continue,
-                // Unknown failure reserving slot.
-                Err(e) => return Err(e),
-            }
-            let msg = format!(
-                "reserved slot {} for Provider {}/{}",
-                slot, provider_namespace, provider_name,
-            );
-            println!("Mask {}/{} {}", namespace, name, msg);
-            // Patch the Mask resource to assign the Provider.
-            let provider_uid = provider.metadata.uid.clone().unwrap();
-            patch_status(client, instance, move |status| {
-                let secret = format!("{}-{}", name, &provider_uid);
-                status.provider = Some(AssignedProvider {
-                    name: provider_name.to_owned(),
-                    namespace: provider_namespace.to_owned(),
-                    uid: provider_uid,
-                    slot,
-                    secret,
-                });
-                status.message = Some(msg);
-            })
-            .await?;
-            // Next reconciliation will create the credentials Secret,
-            // after which the Mask's phase will be updated to Active.
+        if try_reserve_slot(client.clone(), name, namespace, instance, provider).await? {
             return Ok(true);
         }
     }
@@ -162,13 +187,53 @@ pub async fn assign_provider(
     namespace: &str,
     instance: &Mask,
 ) -> Result<bool, Error> {
+    // This will be set to the Provider's uid if the Mask is meant
+    // for verification of the credentials. In this case, a slot will
+    // be assigned regardless of the Provider's phase. The only problem
+    // that may occur is that all slots are already in use.
+    if let Some(provider_uid) = instance
+        .metadata
+        .labels
+        .as_ref()
+        .map_or(None, |l| l.get(VERIFICATION_LABEL).map(|v| v.as_str()))
+    {
+        // Get the Provider resource we are verifying.
+        let provider_api: Api<Provider> = Api::namespaced(client.clone(), namespace);
+        let provider = provider_api
+            .list(&Default::default())
+            .await?
+            .items
+            .into_iter()
+            .filter(|p| p.metadata.uid.as_deref() == Some(provider_uid))
+            .next()
+            .ok_or_else(|| {
+                Error::UserInputError(format!(
+                    "Provider with uid {} not found in namespace {}",
+                    provider_uid, namespace
+                ))
+            })?;
+        // Only assign the Provider that the Mask is meant to verify.
+        if try_reserve_slot(client.clone(), name, namespace, instance, &provider).await? {
+            // Provider had an open slot and it was reserved.
+            return Ok(true);
+        }
+        // Prune and try again.
+        if prune_provider(client.clone(), &provider).await? {
+            if try_reserve_slot(client.clone(), name, namespace, instance, &provider).await? {
+                return Ok(true);
+            }
+        }
+        patch_status(client, instance, |status| {
+            status.phase = Some(MaskPhase::Waiting);
+            status.message = Some("Waiting on a slot from the Provider.".to_owned());
+        })
+        .await?;
+        return Ok(false);
+    }
+
     // See if there are any providers available.
-    let providers = list_active_providers(
-        client.clone(),
-        instance.spec.providers.as_ref(),
-        Some(namespace),
-    )
-    .await?;
+    let providers =
+        list_active_providers(client.clone(), instance.spec.providers.as_ref(), namespace).await?;
     if providers.is_empty() {
         // Reflect the error in the status.
         patch_status(client, instance, |status| {
@@ -189,12 +254,9 @@ pub async fn assign_provider(
     // Remove any dangling reservations.
     if prune(client.clone()).await? {
         // One or more dangling reservations were removed, so retrying should succeed.
-        let providers = list_active_providers(
-            client.clone(),
-            instance.spec.providers.as_ref(),
-            Some(namespace),
-        )
-        .await?;
+        let providers =
+            list_active_providers(client.clone(), instance.spec.providers.as_ref(), namespace)
+                .await?;
         if assign_provider_base(client.clone(), name, namespace, instance, &providers).await? {
             return Ok(true);
         }
@@ -231,7 +293,7 @@ async fn check_prune(
         // Reservation doesn't exist, so it can't be dangling.
         Err(kube::Error::Api(e)) if e.code == 404 => return Ok(false),
         // Error getting reservation ConfigMap.
-        Err(e) => return Err(e),
+        Err(e) => return Err(e.into()),
     };
 
     // Extract the Mask owner properties from the ConfigMap.
@@ -252,26 +314,36 @@ async fn check_prune(
         // Owner Mask no longer exists. Garbage collect it.
         Err(kube::Error::Api(e)) if e.code == 404 => Ok(true),
         // Error getting Mask resource.
-        Err(e) => return Err(e),
+        Err(e) => return Err(e.into()),
     }
+}
+
+/// Prunes dangling slots for a given Provider.
+async fn prune_provider(client: Client, provider: &Provider) -> Result<bool, Error> {
+    let mut deleted = false;
+    let name = provider.metadata.name.as_deref().unwrap();
+    let namespace = provider.metadata.namespace.as_deref().unwrap();
+    let cm_api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
+    for slot in 0..provider.spec.max_slots {
+        let reservation_name = format!("{}-{}", name, slot);
+        if !check_prune(client.clone(), namespace, provider, slot, &reservation_name).await? {
+            continue;
+        }
+        cm_api
+            .delete(&reservation_name, &DeleteParams::default())
+            .await?;
+        deleted = true;
+    }
+    Ok(deleted)
 }
 
 /// Deletes dangling reservations that are no longer owned by a Mask.
 async fn prune(client: Client) -> Result<bool, Error> {
     let mut deleted = false;
-    let providers = list_active_providers(client.clone(), None, None).await?;
+    let provider_api: Api<Provider> = Api::all(client.clone());
+    let providers = provider_api.list(&Default::default()).await?;
     for provider in &providers {
-        let name = provider.metadata.name.as_deref().unwrap();
-        let namespace = provider.metadata.namespace.as_deref().unwrap();
-        let cm_api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
-        for slot in 0..provider.spec.max_slots {
-            let reservation_name = format!("{}-{}", name, slot);
-            if !check_prune(client.clone(), namespace, provider, slot, &reservation_name).await? {
-                continue;
-            }
-            cm_api
-                .delete(&reservation_name, &DeleteParams::default())
-                .await?;
+        if prune_provider(client.clone(), provider).await? {
             deleted = true;
         }
     }
@@ -336,15 +408,18 @@ pub async fn create_reservation(
     name: &str,
     namespace: &str,
     provider: &Provider,
-    reservation_name: String,
-    reservation_namespace: &str,
+    slot: usize,
     owner_uid: String,
-) -> Result<(), Error> {
+) -> Result<(), kube::Error> {
     let cm_api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
     let cm = ConfigMap {
         metadata: ObjectMeta {
-            name: Some(reservation_name.to_owned()),
-            namespace: Some(reservation_namespace.to_owned()),
+            name: Some(format!(
+                "{}-{}",
+                provider.metadata.name.as_deref().unwrap(),
+                slot
+            )),
+            namespace: provider.metadata.namespace.clone(),
             // Set the Provider as the owner reference so the
             // ConfigMap will be deleted with the Provider.
             // This is important when a Provider is deleted
@@ -424,7 +499,7 @@ pub async fn delete_secret(client: Client, namespace: &str, instance: &Mask) -> 
         // Secret does not exist.
         Err(kube::Error::Api(e)) if e.code == 404 => Ok(()),
         // Error deleting Secret.
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -450,7 +525,7 @@ pub async fn delete_reservation(
         // Reservation does not exist; could have been deleted asynchronously.
         Err(kube::Error::Api(e)) if e.code == 404 => Ok(()),
         // Error deleting reservation.
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -476,7 +551,7 @@ pub async fn get_reservation(
     match api.get(name).await {
         Ok(pod) => Ok(Some(pod)),
         Err(kube::Error::Api(ae)) if ae.code == 404 => Ok(None),
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
     }
 }
 

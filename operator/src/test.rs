@@ -187,7 +187,6 @@ async fn create_test_mask(
     slot: usize,
     provider_label: &str,
 ) -> Result<Mask, Error> {
-    let mask_name = format!("{}-{}", MASK_NAME, slot);
     let api: Api<Mask> = Api::namespaced(client, namespace);
     Ok(api
         .create(
@@ -195,13 +194,6 @@ async fn create_test_mask(
             &get_test_mask(namespace, slot, provider_label),
         )
         .await?)
-    //Ok(create_wait(
-    //    client,
-    //    &mask_name,
-    //    namespace,
-    //    get_test_mask(namespace, slot, provider_label),
-    //)
-    //.await?)
 }
 
 /// Waits for the test Provider to be Active.

@@ -1,9 +1,9 @@
-use crate::util::{deep_merge, patch::*, Error, MANAGER_NAME};
+use crate::util::{deep_merge, patch::*, Error, MANAGER_NAME, VERIFICATION_LABEL};
 use const_format::concatcp;
 use k8s_openapi::{
     api::core::v1::{
-        Capabilities, Container, EmptyDirVolumeSource, EnvVar, EnvVarSource, Pod, PodSpec, Secret,
-        SecretKeySelector, SecurityContext, Volume, VolumeMount,
+        Capabilities, Container, EnvVar, EnvVarSource, Pod, PodSpec, Secret, SecretKeySelector,
+        SecurityContext, Volume, VolumeMount,
     },
     apimachinery::pkg::apis::meta::v1::Time,
 };
@@ -47,6 +47,9 @@ pub const DEFAULT_VPN_IMAGE: &str = "qmcgaw/gluetun:v3.32.0";
 /// The name of the probe container within the verify pod.
 pub const PROBE_CONTAINER_NAME: &str = "probe";
 
+/// The name of the probe container within the verify pod.
+pub const VPN_CONTAINER_NAME: &str = "vpn";
+
 /// The script used by the probe container to check if the
 /// VPN is connected. Requires the environment variables.
 const PROBE_SCRIPT: &str = "#!/bin/sh
@@ -63,8 +66,9 @@ while [ $? -ne 0 ] || [ \"$IP\" = \"$INITIAL_IP\" ]; do
     echo \"Current IP address is $IP, sleeping for $SLEEP_TIME\"
     sleep $SLEEP_TIME
     IP=$(curl -m $TIMEOUT -s $IP_SERVICE)
-    TIMEOUT=$((TIMEOUT + ITER)) # exponential timeout backoff
-    SLEEP_TIME=$((SLEEP_TIME + ITER)) # exponential sleep backoff
+    # exponential backoff
+    TIMEOUT=$((TIMEOUT + ITER))
+    SLEEP_TIME=$((SLEEP_TIME + ITER))
     ITER=$((ITER + 1))
 done
 echo \"VPN connected. Masked IP address: $IP\"";
@@ -89,7 +93,7 @@ lazy_static! {
         ..Default::default()
     };
     static ref DEFAULT_VPN_CONTAINER: Container = Container {
-        name: "vpn".to_owned(),
+        name: VPN_CONTAINER_NAME.to_owned(),
         image: Some(DEFAULT_VPN_IMAGE.to_owned()),
         image_pull_policy: Some("IfNotPresent".to_owned()),
         security_context: Some(SecurityContext {
@@ -209,19 +213,11 @@ fn mask_uses_provider(name: &str, namespace: &str, uid: &str, mask: &Mask) -> bo
 pub async fn verify_progress(
     client: Client,
     instance: &Provider,
-    start_time: Option<Time>,
+    _start_time: Option<Time>,
+    message: String,
 ) -> Result<(), Error> {
     patch_status(client, instance, |status| {
-        status.message = Some(match start_time {
-            Some(ref start_time) => {
-                let elapsed = chrono::Utc::now() - start_time.0;
-                format!(
-                    "Verification is in progress. Elapsed time: {}s",
-                    elapsed.num_seconds()
-                )
-            }
-            None => "Verification is in progress.".to_owned(),
-        });
+        status.message = Some(message);
         status.phase = Some(ProviderPhase::Verifying);
     })
     .await?;
@@ -243,10 +239,24 @@ pub async fn verify_failed(
     Ok(())
 }
 
-/// Deletes the verification pod.
+/// Deletes the verification Pod.
 pub async fn delete_verify_pod(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
     let api: Api<Pod> = Api::namespaced(client, namespace);
     match api.delete(name, &DeleteParams::default()).await {
+        // Pod was deleted.
+        Ok(_) => Ok(()),
+        // Pod does not exist.
+        Err(kube::Error::Api(e)) if e.code == 404 => Ok(()),
+        // Error deleting Pod.
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Deletes the verification Mask.
+pub async fn delete_verify_mask(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
+    let api: Api<Mask> = Api::namespaced(client, namespace);
+    let name = get_verify_mask_name(name);
+    match api.delete(&name, &DeleteParams::default()).await {
         // Pod was deleted.
         Ok(_) => Ok(()),
         // Pod does not exist.
@@ -313,12 +323,51 @@ fn get_vpn_container(secret: &Secret, overrides: Option<&Value>) -> Result<Conta
     }
 }
 
+/// Returns the name of the Mask resource used to reserve
+/// a slot for verification.
+pub fn get_verify_mask_name(name: &str) -> String {
+    format!("{}-verify", name)
+}
+
+/// Labels for the verification Mask resource.
+fn verify_mask_labels(instance: &Provider) -> BTreeMap<String, String> {
+    let mut labels: BTreeMap<String, String> = BTreeMap::new();
+    // Add a label to the Mask so that we can easily find it.
+    labels.insert("app".to_owned(), MANAGER_NAME.to_owned());
+    // Indicate the Mask is meant for this Provider's verification.
+    // This will force assign the Mask regardless of the Provider's
+    // phase and the only error possible will be ErrNoSlots.
+    labels.insert(
+        VERIFICATION_LABEL.to_owned(),
+        instance.metadata.uid.clone().unwrap(),
+    );
+    labels
+}
+
+/// Returns the Mask resource used to cloak the verification Pod.
+fn verify_mask(name: &str, namespace: &str, instance: &Provider) -> Mask {
+    Mask {
+        metadata: ObjectMeta {
+            name: Some(get_verify_mask_name(name)),
+            namespace: Some(namespace.to_owned()),
+            labels: Some(verify_mask_labels(instance)),
+            owner_references: Some(vec![instance.controller_owner_ref(&()).unwrap()]),
+            ..Default::default()
+        },
+        spec: MaskSpec {
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
 /// Returns a Pod resource that verifies the VPN credentials work.
 fn verify_pod(
     name: &str,
     namespace: &str,
     instance: &Provider,
     secret: &Secret,
+    _mask: &Mask,
 ) -> Result<Pod, Error> {
     let overrides = instance
         .spec
@@ -354,10 +403,8 @@ fn verify_pod(
             containers: vec![vpn_container, probe_container],
             volumes: Some(vec![Volume {
                 name: SHARED_VOLUME_NAME.to_owned(),
-                empty_dir: Some(EmptyDirVolumeSource {
-                    ..EmptyDirVolumeSource::default()
-                }),
-                ..Volume::default()
+                empty_dir: Some(Default::default()),
+                ..Default::default()
             }]),
             ..Default::default()
         }),
@@ -388,12 +435,25 @@ pub async fn verified(client: Client, instance: &Provider) -> Result<(), Error> 
     Ok(())
 }
 
+/// Creates a Mask for the verification pod.
+pub async fn create_verify_mask(
+    client: Client,
+    name: &str,
+    namespace: &str,
+    instance: &Provider,
+) -> Result<Mask, Error> {
+    let mask_api: Api<Mask> = Api::namespaced(client, namespace);
+    let mask = verify_mask(name, namespace, instance);
+    Ok(mask_api.create(&Default::default(), &mask).await?)
+}
+
 /// Creates a pod that verifies the VPN credentials work.
 pub async fn create_verify_pod(
     client: Client,
     name: &str,
     namespace: &str,
     instance: &Provider,
+    mask: &Mask,
 ) -> Result<Pod, Error> {
     // Get the VPN credentials secret so we know which keys
     // to inject into the VPN container's environment.
@@ -401,7 +461,7 @@ pub async fn create_verify_pod(
     let secret = secret_api.get(&instance.spec.secret).await?;
 
     // Create the pod, honoring overrides in the Provider spec.
-    let pod = verify_pod(name, namespace, instance, &secret)?;
+    let pod = verify_pod(name, namespace, instance, &secret, mask)?;
     let pod_api: Api<Pod> = Api::namespaced(client, namespace);
     Ok(pod_api.create(&Default::default(), &pod).await?)
 }

@@ -14,7 +14,7 @@ use tokio::time::Duration;
 use crate::metrics::{PROVIDER_ACTION_COUNTER, PROVIDER_RECONCILE_COUNTER};
 
 use super::{
-    actions::{self, PROBE_CONTAINER_NAME},
+    actions::{self, get_verify_mask_name, PROBE_CONTAINER_NAME, VPN_CONTAINER_NAME},
     finalizer,
 };
 use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
@@ -36,7 +36,8 @@ pub async fn run(client: Client) -> Result<(), Error> {
     // - `on_error` function to call whenever reconciliation fails.
     Controller::new(crd_api, ListParams::default())
         .owns(Api::<ConfigMap>::all(client.clone()), ListParams::default())
-        .owns(Api::<Pod>::all(client), ListParams::default())
+        .owns(Api::<Pod>::all(client.clone()), ListParams::default())
+        .owns(Api::<Mask>::all(client), ListParams::default())
         .run(reconcile, on_error, context)
         .for_each(|_reconciliation_result| async move {
             //match reconciliation_result {
@@ -87,11 +88,17 @@ enum ProviderAction {
     /// Set the `Provider` resource status.phase to ErrSecretNotFound.
     SecretNotFound(String),
 
+    /// Create a Mask to reserve a slot for verification.
+    CreateVerifyMask,
+
     /// Create a gluetun pod and verify that the external IP changes.
-    Verify,
+    CreateVerifyPod(Mask),
 
     /// Set the status to Verifying.
-    Verifying { start_time: Option<Time> },
+    Verifying {
+        message: String,
+        start_time: Option<Time>,
+    },
 
     /// Set the status to Verified.
     Verified,
@@ -175,7 +182,9 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
     // This is the write phase of reconciliation.
     let result = match action {
         ProviderAction::Pending => {
-            // Give the `Provider` resource a finalizer.
+            // Give the `Provider` resource a finalizer. This will be done
+            // regardless of whether we do it now, but doing it now might
+            // increase performance.
             let instance = finalizer::add(client.clone(), &name, &namespace).await?;
 
             // Update the phase of the `Provider` resource to Pending.
@@ -192,8 +201,11 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             Action::requeue(Duration::ZERO)
         }
         ProviderAction::Delete => {
-            // Delete the verification pod.
+            // Delete the verification Pod.
             actions::delete_verify_pod(client.clone(), &name, &namespace).await?;
+
+            // Delete the verification Mask.
+            actions::delete_verify_mask(client.clone(), &name, &namespace).await?;
 
             // Delete Secrets in namespaces that use this `Provider`.
             // This will prevent `Masks` from continuing to use the credentials
@@ -213,23 +225,46 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // Requeue after a while if the resource doesn't change.
             Action::requeue(PROBE_INTERVAL)
         }
-        ProviderAction::Verify => {
-            // Ensure the finalizer is present on the `Provider` resource.
-            finalizer::add(client.clone(), &name, &namespace).await?;
-
-            // Create the verification pod.
-            let pod =
-                actions::create_verify_pod(client.clone(), &name, &namespace, &instance).await?;
+        ProviderAction::CreateVerifyMask => {
+            // Create the verification Mask.
+            actions::create_verify_mask(client.clone(), &name, &namespace, &instance).await?;
 
             // Indicate that verification is in progress.
-            actions::verify_progress(client, &instance, pod.metadata.creation_timestamp).await?;
+            actions::verify_progress(
+                client,
+                &instance,
+                None,
+                "Created verification Mask.".to_owned(),
+            )
+            .await?;
 
             // Requeue after a short delay to allow the verification time to complete.
             Action::requeue(PROBE_INTERVAL)
         }
-        ProviderAction::Verifying { start_time } => {
+        ProviderAction::CreateVerifyPod(mask) => {
+            // Create the verification pod.
+            let pod =
+                actions::create_verify_pod(client.clone(), &name, &namespace, &instance, &mask)
+                    .await?;
+
+            // Indicate that verification is in progress.
+            actions::verify_progress(
+                client,
+                &instance,
+                pod.metadata.creation_timestamp,
+                "Created verification Pod.".to_owned(),
+            )
+            .await?;
+
+            // Requeue after a short delay to allow the verification time to complete.
+            Action::requeue(PROBE_INTERVAL)
+        }
+        ProviderAction::Verifying {
+            start_time,
+            message,
+        } => {
             // Post the progress to the status object.
-            actions::verify_progress(client, &instance, start_time).await?;
+            actions::verify_progress(client, &instance, start_time, message).await?;
 
             // Requeue after a short delay to allow the verification time to complete.
             Action::requeue(PROBE_INTERVAL)
@@ -238,8 +273,11 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // Update the phase of the `Provider` resource to Verified.
             actions::verify_failed(client.clone(), &instance, message).await?;
 
-            // Delete the verification pod so it can be recreated.
-            actions::delete_verify_pod(client, &name, &namespace).await?;
+            // Delete the verification Pod so it can be recreated.
+            actions::delete_verify_pod(client.clone(), &name, &namespace).await?;
+
+            // Delete the verification Mask so it can be recreated.
+            actions::delete_verify_mask(client, &name, &namespace).await?;
 
             // Requeue after a delay so the user has time to see the error phase.
             Action::requeue(PROBE_INTERVAL)
@@ -248,8 +286,11 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // Set the timestamp of when the verification completed.
             actions::verified(client.clone(), &instance).await?;
 
-            // Delete the verification pod.
-            actions::delete_verify_pod(client, &name, &namespace).await?;
+            // Delete the verification Pod.
+            actions::delete_verify_pod(client.clone(), &name, &namespace).await?;
+
+            // Delete the verification Mask.
+            actions::delete_verify_mask(client, &name, &namespace).await?;
 
             // Requeue immediately to proceed with reconciliation.
             Action::requeue(Duration::ZERO)
@@ -374,6 +415,21 @@ lazy_static! {
 
 const DEFAULT_VERIFY_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Gets the verification Mask for the Provider.
+async fn get_verify_mask(
+    client: Client,
+    name: &str,
+    namespace: &str,
+) -> Result<Option<Mask>, Error> {
+    let api: Api<Mask> = Api::namespaced(client, namespace);
+    let name = get_verify_mask_name(name);
+    match api.get(&name).await {
+        Ok(pod) => Ok(Some(pod)),
+        Err(kube::Error::Api(ae)) if ae.code == 404 => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Gets the verification pod for the Provider.
 async fn get_verify_pod(client: Client, name: &str, namespace: &str) -> Result<Option<Pod>, Error> {
     let api: Api<Pod> = Api::namespaced(client, namespace);
@@ -408,11 +464,31 @@ fn get_verify_timeout(instance: &Provider) -> Duration {
         .unwrap_or(DEFAULT_VERIFY_TIMEOUT)
 }
 
-/// Determines the action given that the verification pod is present.
-async fn determine_verify_pod_action(
-    instance: &Provider,
-    pod: &Pod,
-) -> Result<Option<ProviderAction>, Error> {
+/// Determines the action given that the verification Mask is present
+/// and the Pod is not.
+fn determine_verify_mask_action(mask: Mask) -> Result<ProviderAction, Error> {
+    Ok(match mask.status.as_ref().map_or(None, |s| s.phase) {
+        // Controller is still processing the Mask.
+        Some(MaskPhase::Pending) | None => ProviderAction::Verifying {
+            start_time: None,
+            message: "Waiting on the controller for the verification Mask.".to_owned(),
+        },
+        // The Mask is ready to be used in the verification Pod.
+        Some(MaskPhase::Active) => ProviderAction::CreateVerifyPod(mask),
+        // The Provider has too many active slots, we will have to wait.
+        Some(MaskPhase::Waiting) => ProviderAction::Verifying {
+            start_time: None,
+            message: "Waiting for the verification Mask to be assigned a slot.".to_owned(),
+        },
+        // Unreachable branch: failed to assign the Provider.
+        Some(MaskPhase::ErrNoProviders) => ProviderAction::VerifyFailed(
+            "Verification Mask observed unexpected ErrNoProviders.".to_owned(),
+        ),
+    })
+}
+
+/// Determines the action given that the verification Pod is present.
+fn determine_verify_pod_action(instance: &Provider, pod: &Pod) -> Result<ProviderAction, Error> {
     // Examine the status object of the pod.
     let status = pod
         .status
@@ -422,69 +498,87 @@ async fn determine_verify_pod_action(
         .phase
         .as_deref()
         .ok_or_else(|| Error::UserInputError("Pod phase is missing".to_string()))?;
-    match phase {
+
+    // Since the probe container will exit with code 0, the pod
+    // may not be in the "Succeeded" phase. On my kubernetes cluster
+    // (DigitalOcean w/ containerd) the pods enter the phase Running
+    // (but it will read NotReady), and the container status can be
+    // inspected to determine the VPN connection was successful.
+    if is_probe_successful(status) {
+        return Ok(ProviderAction::Verified);
+    }
+
+    Ok(match phase {
         // Verification pod is waiting to be scheduled.
         // This may be an error if the pod isn't able to be scheduled.
-        "Pending" => Ok(Some({
-            if let Some(message) = check_pod_scheduling_error(status) {
-                return Ok(Some(ProviderAction::VerifyFailed(message)));
-            }
-            // Check if it's past the timeout.
-            if get_pod_age(pod)? > get_verify_timeout(instance) {
-                return Ok(Some(ProviderAction::VerifyFailed(
-                    "Verification timed out waiting for Pod to schedule.".to_owned(),
-                )));
-            }
-            // Still waiting for pod to be scheduled.
-            ProviderAction::Verifying {
-                start_time: pod.metadata.creation_timestamp.clone(),
-            }
-        })),
+        "Pending" => match check_pod_scheduling_error(status) {
+            Some(message) => ProviderAction::VerifyFailed(message),
+            None => check_verify_timeout(instance, &pod)?,
+        },
         // Verification pod is still waiting for the IP to change.
-        "Running" => {
-            // Make sure the verification pod isn't too old.
-            // If it goes past the timeout, it doesn't matter what
-            // phase it's in, it will be considered a failure.
-            if get_pod_age(pod)? > get_verify_timeout(instance) {
-                return Ok(Some(ProviderAction::VerifyFailed(
-                    "Timed out waiting for VPN connection.".to_owned(),
-                )));
-            }
-            // Verification is still in progress.
-            Ok(Some(ProviderAction::Verifying {
-                start_time: pod.metadata.creation_timestamp.clone(),
-            }))
-        }
-        // Since the probe container will exit with code 0, the pod
-        // may not be in the "Succeeded" phase. On my kubernetes
-        // cluster (DigitalOcean w/ containerd) the pods enter
-        // the phase NotReady, and the container status shows that
-        // the VPN connection was successful.
-        "NotReady"
-            if status
-                .container_statuses
-                .as_ref()
-                .map_or(None, |cs| {
-                    cs.iter().filter(|s| s.name == PROBE_CONTAINER_NAME).next()
-                })
-                .map_or(false, |cs| {
-                    cs.state.as_ref().map_or(false, |s| {
-                        s.terminated.as_ref().map_or(false, |t| t.exit_code == 0)
-                    })
-                }) =>
-        {
-            Ok(Some(ProviderAction::Verified))
-        }
+        "Running" => check_verify_timeout(instance, &pod)?,
         // Verification has completed (new IP obtained).
         // This is what should be observed according to the
         // Kubernetes docs, but it doesn't seem to be the case.
-        "Succeeded" => Ok(Some(ProviderAction::Verified)),
+        "Succeeded" => ProviderAction::Verified,
         // Unknown error.
         // TODO: post failure error message to status object.
-        _ => Ok(Some(ProviderAction::VerifyFailed(
-            "Unknown error occurred during verification.".to_owned(),
-        ))),
-    }
+        _ => ProviderAction::VerifyFailed("Unknown error occurred during verification.".to_owned()),
+    })
+}
+
+/// Returns the action given that the verification Pod
+/// is in a Pending or Running phase. Checks to see if
+/// the verification attempt has timed out.
+fn check_verify_timeout(instance: &Provider, pod: &Pod) -> Result<ProviderAction, Error> {
+    // Make sure the verification pod isn't too old.
+    // If it goes past the timeout, it doesn't matter what
+    // phase it's in, it will be considered a failure.
+    Ok(if get_pod_age(pod)? > get_verify_timeout(instance) {
+        ProviderAction::VerifyFailed(
+            "Verification timed out waiting for Pod to schedule.".to_owned(),
+        )
+    } else {
+        // Still waiting for pod to be scheduled.
+        ProviderAction::Verifying {
+            start_time: pod.metadata.creation_timestamp.clone(),
+            message: "Waiting on verification Pod to start.".to_owned(),
+        }
+    })
+}
+
+/// Returns true if the pod's status indicates the probe
+/// was successful and therefore verification has passed.
+/// There is a quirk on Kubernetes where a multicontainer
+/// pod that has only one container exit will be in the
+/// Running phase on the yaml, but it will be displayed as
+/// NotReady by kubectl. The container statuses can be inspected
+/// to determine if the probe was successful. Because of the
+/// discrepancy in the apparent and actual phases, this doesn't
+/// look at the phase at all.
+fn is_probe_successful(status: &PodStatus) -> bool {
+    status
+        .container_statuses
+        .as_ref()
+        .map_or(None, |cs| {
+            cs.iter().filter(|s| s.name == VPN_CONTAINER_NAME).next()
+        })
+        .map_or(false, |cs| {
+            // VPN container should still be running.
+            cs.state.as_ref().map_or(false, |s| s.running.is_some())
+        })
+        && status
+            .container_statuses
+            .as_ref()
+            .map_or(None, |cs| {
+                cs.iter().filter(|s| s.name == PROBE_CONTAINER_NAME).next()
+            })
+            .map_or(false, |cs| {
+                // Probe container should have exited with code 0.
+                cs.state.as_ref().map_or(false, |s| {
+                    s.terminated.as_ref().map_or(false, |t| t.exit_code == 0)
+                })
+            })
 }
 
 /// Checks if verification is necessary and returns the appropriate action.
@@ -503,13 +597,23 @@ async fn determine_verify_action(
         None => &DEFAULT_VERIFY_SPEC,
     };
 
-    // Check if the verify pod exists.
+    // Check if the verify pod exists. Its existence implies that
+    // verification was required at some point.
     if let Some(pod) = get_verify_pod(client.clone(), name, namespace).await? {
-        // Verification pod exists. Examine its status object.
-        return determine_verify_pod_action(instance, &pod).await;
+        // Verification Pod exists. Examine its status object.
+        return Ok(Some(determine_verify_pod_action(instance, &pod)?));
     }
 
-    // Determine if we need to create the verification pod.
+    // Check if the verify Mask exists. Its existence implies that
+    // verification was required at some point. We may be doing a
+    // periodic verification and it's still important not to exceed
+    // the spec's maxSlots.
+    if let Some(mask) = get_verify_mask(client.clone(), name, namespace).await? {
+        // Verification Mask exists. Examine its status object.
+        return Ok(Some(determine_verify_mask_action(mask)?));
+    }
+
+    // Determine if we need to verify the credentials.
     if let Some(ref last_verified) = instance.status.as_ref().unwrap().last_verified {
         // The service has been verified before.
         let interval = match verify.interval {
@@ -531,8 +635,8 @@ async fn determine_verify_action(
         // Verification is stale.
     }
 
-    // Create the verification pod.
-    Ok(Some(ProviderAction::Verify))
+    // Create the verification resources.
+    Ok(Some(ProviderAction::CreateVerifyMask))
 }
 
 /// Returns the number of reservation ConfigMaps for a Provider.
@@ -546,9 +650,8 @@ async fn count_reservations(
     // that were immediately recreated.
     let uid = instance.metadata.uid.as_deref().unwrap();
 
-    // List ConfigMaps owned by the Provider.
-    let api: Api<ConfigMap> = Api::namespaced(client, namespace);
-    let items = api
+    // Count the ConfigMaps with the Provider as the owner.
+    Ok(Api::<ConfigMap>::namespaced(client, namespace)
         .list(&ListParams::default())
         .await?
         .items
@@ -560,17 +663,7 @@ async fn count_reservations(
                 .as_ref()
                 .map_or(false, |ors| ors.iter().any(|or| or.uid == uid))
         })
-        .collect::<Vec<_>>();
-
-    // Count the ConfigMaps with the Provider as the owner.
-    let active_slots = items.len();
-    if active_slots > instance.spec.max_slots {
-        // TODO: prune from the Provider controller.
-        // Clamp the value at the true client maximum.
-        // Max clients was probably decreased in the spec.
-        return Ok(instance.spec.max_slots);
-    }
-    Ok(active_slots)
+        .count())
 }
 
 /// Determines the action given that the only thing left to do

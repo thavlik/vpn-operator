@@ -95,6 +95,9 @@ spec:
     # just to keep the status up to date. This would be most useful
     # if you had a large number of services and you want to automate
     # the process of regularly verifying the credentials are valid.
+    # Note that verification will create a Mask in order to reserve
+    # a slot with the Provider. Verification will be delayed until
+    # a slot is reserved as to avoid exceeding the connection limit. 
     interval: 24h
 
     # The following enables customization of the verification Pod
@@ -133,6 +136,11 @@ spec:
 kubectl get provider -Aw
 ```
 
+If there is an error verifying the credentials, you can view the error details by looking at the `Provider`'s `status.message` field:
+```bash
+kubectl get provider -A -o yaml
+```
+
 3. Create `Mask` resources to reserve slots with the `Provider`:
 ```yaml
 apiVersion: vpn.beebs.dev/v1
@@ -145,10 +153,13 @@ spec:
   # These value will correspond to Providers' metadata.labels["vpn.beebs.dev/provider"]
   #providers: [my-example-vpn-label]
 ```
+
 4. Wait for the `Mask`'s phase to be `Active` before using it:
 ```bash
 kubectl get mask -Aw
 ```
+As with the `Provider` resource, the `Mask` also has a `status.message` field that provides a more verbose description of any errors encountered during reconciliation.
+
 5. The `Mask`'s status object contains a reference to the VPN credentials `Secret` created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. as environment variables with [gluetun](https://github.com/qdm12/gluetun)).
 
 ## Chart configuration (values.yaml)
@@ -224,7 +235,7 @@ Notes on the operator code itself can be found in [operator/README.md](operator/
 ### Choosing a VPN service
 Some services are more amenable for use with vpn-operator than others. Maximum number of connected devices is an important contractual detail.
 
-It's probably worth paying a premium to have access to a larger pool of IPs across more regions. For example, when using a `Mask` to download a video using a cloaked `Pod` (such as with [ytdl-operator](https://github.com/thavlik/ytdl-operator)), failed attempts due to constantly using banned IPs will slow overall progress more than if the service's bandwidth were reduced. Slow downloads are acceptable as long the service is reliable.
+It's probably worth paying a premium to have access to a larger pool of IPs across more regions. For example, when using a `Mask` to download a video using a cloaked `Pod` (such as with [ytdl-operator](https://github.com/thavlik/ytdl-operator)), failed attempts due to constantly using banned IPs will slow overall progress more than if the service's bandwidth were reduced. Slow downloads are acceptable as long as the service is reliable.
 
 ## License
 All code in this repository is released under [MIT](LICENSE-MIT) / [Apache 2.0](LICENSE-Apache) dual license, which is extremely permissive. Please open an issue if somehow these terms are insufficient.

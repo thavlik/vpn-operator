@@ -188,8 +188,8 @@ imagePullPolicy: Always
 prometheus:
   # Run the metrics server with the controllers. This will
   # report on the actions taken as well as how how much
-  # time elapses between their read/write phases.
-  # All keys are prefixed with 'vpno_'
+  # time elapses between their read/write phases. All keys
+  # are prefixed with 'vpno_'
   expose: true
 
   # Create PodMonitor resources for the controllers.

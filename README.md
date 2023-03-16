@@ -109,7 +109,7 @@ spec:
     # the process of regularly verifying the credentials are valid.
     # Note that verification will create a Mask in order to reserve
     # a slot with the Provider. Verification will be delayed until
-    # a slot is reserved as to avoid exceeding the connection limit. 
+    # the slot is reserved, as to not exceed `maxSlots` connections. 
     interval: 24h
 
     # The following enables customization of the verification Pod
@@ -130,7 +130,7 @@ spec:
           image: curlimages/curl:7.88.1
         # Overrides for the VPN Container. This container connects
         # to the VPN service using environment variables from the
-        # Provider's credentials Secret. As all containers in a pod
+        # Provider's credentials Secret. As all containers in a Pod
         # share the same network, it will connect all containers
         # to the VPN.
         vpn:
@@ -147,8 +147,7 @@ spec:
 ```bash
 kubectl get provider -Aw
 ```
-
-If there is an error verifying the credentials, you can view the error details by looking at the `Provider`'s `status.message` field:
+If there is an error verifying the credentials, the phase of the `Provider` will be `ErrVerifyFailed` and you can view the error details by looking at its `status.message` field:
 ```bash
 kubectl get provider -A -o yaml
 ```
@@ -159,6 +158,7 @@ apiVersion: vpn.beebs.dev/v1
 kind: Mask
 metadata:
   name: my-mask
+  # Note the Mask's namespace can differ from an assigned Provider.
   namespace: default
 spec:
   # You can optionally require the Mask be assigned Providers with
@@ -240,13 +240,6 @@ These are the enum values for the `Mask` resource's `status.phase` field, which 
 - **`Ready`**: The resource's VPN service credentials are ready to be used. 
 - **`Active`**: The resource's VPN service credentials are in use by a `Pod`.
 - **`ErrNoProviders`**: No suitable `Provider` resources were found.
-
-### Status message
-In addition to `phase`, the status objects of the `Mask` and `Provider` custom resources have a `message` field that is a more verbose description of why the resource is in the current phase. For example, you can view the status object of a `Mask` with `kubectl`:
-```bash
-kubectl get mask your-mask-name -o jsonpath='{.status}'
-```
-This information is useful for debugging and should be propogated to the status of any custom resource that depends on a `Mask`.
 
 ### Ownership model
 Any `Pod` that uses a `Mask` should have a reference to it in [`metadata.ownerReferences`](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) with `blockOwnerDeletion=true`. This way, the deletion of the `Mask` will be blocked until the `Pod` is deleted, and the `Pod` will automatically be garbage collected when its `Mask` is deleted. The controller also uses this relationship to determine whether a `Mask` is in the `Ready` (not in use) or the `Active` (in use) phase.

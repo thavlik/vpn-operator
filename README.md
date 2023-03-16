@@ -192,9 +192,9 @@ prometheus:
   # are prefixed with 'vpno_'
   expose: true
 
-  # Create PodMonitor resources for the controllers.
-  # This value may be false while `expose` is true if you
-  # want to scrape the controller pods using another method.
+  # Create PodMonitor resources for the controllers. This
+  # value may be false while `expose` is true if you want
+  # to scrape the controller pods using another method.
   podMonitors: true
 
 # The Mask and Provider resources have separate Deployments.

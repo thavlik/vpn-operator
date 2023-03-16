@@ -222,7 +222,7 @@ controllers:
         memory: 128Mi
         cpu: 100m
 ```
-## Prometheus metrics
+## Performance metrics
 These are names and descriptions of collected [Prometheus](https://prometheus.io/) metrics:
 - `vpno_mask_reconcile_counter`: Number of reconciliations by the `Mask` controller.
 - `vpno_mask_action_counter`: Number of actions taken by the `Mask` controller.

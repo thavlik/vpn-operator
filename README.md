@@ -222,6 +222,19 @@ controllers:
         memory: 128Mi
         cpu: 100m
 ```
+## Prometheus metrics
+These are names and descriptions of collected [Prometheus](https://prometheus.io/) metrics:
+- `vpno_mask_reconcile_counter`: Number of reconciliations by the `Mask` controller.
+- `vpno_mask_action_counter`: Number of actions taken by the `Mask` controller.
+- `vpno_mask_read_duration_seconds`: Amount of time taken by the read phase of the `Mask` controller.
+- `vpno_mask_write_duration_seconds`: Amount of time taken by the write phase of the `Mask` controller.
+- `vpno_provider_reconcile_counter`: Number of reconciliations by the `Provider` controller.
+- `vpno_provider_action_counter`: Number of actions taken by the `Provider` controller.
+- `vpno_provider_read_duration_seconds`: Amount of time taken by the read phase of the `Provider` controller.
+- `vpno_provider_write_duration_seconds`: Amount of time taken by the write phase of the `Provider` controller.
+- `vpno_http_requests_total`: Number of HTTP requests made to the metrics server.
+- `vpno_http_response_size_bytes`: Metrics server HTTP response sizes in bytes.
+- `vpno_http_request_duration_seconds`: Metrics server HTTP request latencies in seconds.
 
 ## Notes
 ### Provider Phase

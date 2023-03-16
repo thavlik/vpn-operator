@@ -69,7 +69,7 @@ spec:
   # six devices to be active simultaneously, and we want to reserve
   # a single slot for our local machine. This limit is a requirement.
   # You shouldn't attempt to create an obscene number of connections.
-  # Always set it to sane value for your purposes. 
+  # Always set this to sane value for your purposes. 
   maxSlots: 5
 
   # You can optionally specify tag(s) so that Masks have the ability

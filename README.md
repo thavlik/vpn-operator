@@ -42,7 +42,7 @@ helm install \
 ```
 
 ## Usage
-1. Create a `Provider` resource and credentials `Secret` with your VPN credentials. Unless you set `spec.verify.skip=true` in the `Provider`, the controller will dial the service with your credentials as a way to automatically test the service end-to-end for you. The expected structure of the credentials `Secret` corresponds to environment variables for a [gluetun](https://github.com/qdm12/gluetun) container. Refer to the [gluetun wiki](https://github.com/qdm12/gluetun/wiki) for provider-specific guides.
+1. Create a `Provider` resource and accompanying `Secret` with your VPN credentials. Unless you set `spec.verify.skip=true` in the `Provider`, the controller will dial the service with your credentials as a way to automatically test the service end-to-end for you. The expected structure of the credentials `Secret` corresponds to environment variables for a [gluetun](https://github.com/qdm12/gluetun) container. Refer to the [gluetun wiki](https://github.com/qdm12/gluetun/wiki) for provider-specific guides.
 ```yaml
 apiVersion: v1
 kind: Secret

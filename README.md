@@ -222,19 +222,6 @@ controllers:
         memory: 128Mi
         cpu: 100m
 ```
-## Performance metrics
-These are names and descriptions of [Prometheus](https://prometheus.io/) metrics collected by the controllers:
-- `vpno_mask_reconcile_counter`: Number of reconciliations by the `Mask` controller.
-- `vpno_mask_action_counter`: Number of actions taken by the `Mask` controller.
-- `vpno_mask_read_duration_seconds`: Amount of time taken by the read phase of the `Mask` controller.
-- `vpno_mask_write_duration_seconds`: Amount of time taken by the write phase of the `Mask` controller.
-- `vpno_provider_reconcile_counter`: Number of reconciliations by the `Provider` controller.
-- `vpno_provider_action_counter`: Number of actions taken by the `Provider` controller.
-- `vpno_provider_read_duration_seconds`: Amount of time taken by the read phase of the `Provider` controller.
-- `vpno_provider_write_duration_seconds`: Amount of time taken by the write phase of the `Provider` controller.
-- `vpno_http_requests_total`: Number of HTTP requests made to the metrics server.
-- `vpno_http_response_size_bytes`: Metrics server HTTP response sizes in bytes.
-- `vpno_http_request_duration_seconds`: Metrics server HTTP request latencies in seconds.
 
 ## Notes
 ### Provider Phase
@@ -259,6 +246,20 @@ These are the enum values for the `Mask` resource's `status.phase` field, which 
 Any `Pod` that uses a `Mask` should have a reference to it in [`metadata.ownerReferences`](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) with `blockOwnerDeletion=true`. This way, the deletion of the `Mask` will be blocked until the `Pod` is deleted, and the `Pod` will automatically be garbage collected when its `Mask` is deleted. The controller also uses this relationship to determine whether a `Mask` is in the `Ready` (not in use) or the `Active` (in use) phase.
 
 Your `Mask` should have an owner reference to your custom resource, and your `Pod` should have owner references to both your `Mask` and the aforementioned custom resource. Your custom resource should be the only owner reference you create with `controller=true`, as your controller is responsible for reconciling your child `Mask` and `Pod` resources. The owner references with `controller=false` exist strictly for garbage collection purposes and, as described above, to determine if the `Mask` is `Ready` or `Active`.
+
+### Performance metrics
+These are names and descriptions of [Prometheus](https://prometheus.io/) metrics collected by the controllers:
+- `vpno_mask_reconcile_counter`: Number of reconciliations by the `Mask` controller.
+- `vpno_mask_action_counter`: Number of actions taken by the `Mask` controller.
+- `vpno_mask_read_duration_seconds`: Amount of time taken by the read phase of the `Mask` controller.
+- `vpno_mask_write_duration_seconds`: Amount of time taken by the write phase of the `Mask` controller.
+- `vpno_provider_reconcile_counter`: Number of reconciliations by the `Provider` controller.
+- `vpno_provider_action_counter`: Number of actions taken by the `Provider` controller.
+- `vpno_provider_read_duration_seconds`: Amount of time taken by the read phase of the `Provider` controller.
+- `vpno_provider_write_duration_seconds`: Amount of time taken by the write phase of the `Provider` controller.
+- `vpno_http_requests_total`: Number of HTTP requests made to the metrics server.
+- `vpno_http_response_size_bytes`: Metrics server HTTP response sizes in bytes.
+- `vpno_http_request_duration_seconds`: Metrics server HTTP request latencies in seconds.
 
 ### Scaling
 While the controller code is fully capable of concurrent reconciliations, scaling is not as simple as increasing the number of replicas in the deployments. I have ideas for how to scale horizontally, so please open an issue if you encounter problems scaling vertically.

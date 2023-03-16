@@ -173,7 +173,7 @@ kubectl get mask -Aw
 ```
 As with the `Provider` resource, the `Mask` also has a `status.message` field that provides a more verbose description of any errors encountered during reconciliation.
 
-5. The `Mask`'s status object contains a reference to the VPN credentials `Secret` created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. as environment variables with [gluetun](https://github.com/qdm12/gluetun)).
+5. The `Mask`'s status object contains a reference to the VPN credentials `Secret` created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. as environment variables into [gluetun](https://github.com/qdm12/gluetun)).
 
 ## Chart configuration (values.yaml)
 ```yaml

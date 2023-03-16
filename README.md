@@ -66,10 +66,11 @@ metadata:
   namespace: default
 spec:
   # In this example, the contractual terms with NordVPN allows up to
-  # six devices to be active simultaneously. This field is mandatory.
+  # six devices to be active simultaneously, and we want to reserve
+  # a single slot for our local machine. This limit is a requirement.
   # You shouldn't attempt to create an obscene number of connections.
   # Always set it to sane value for your purposes. 
-  maxSlots: 6
+  maxSlots: 5
 
   # You can optionally specify tag(s) so that Masks have the ability
   # to select this service at the exclusion of others. This Provider

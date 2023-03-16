@@ -10,7 +10,7 @@ This operator simplifies the process of hiding your pods behind one or more VPN 
 git clone https://github.com/thavlik/vpn-operator
 cd vpn-operator
 ```
-2. Apply the [Custom Resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) Definitions:
+2. Install the [Custom Resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) Definitions:
 ```bash
 kubectl apply -f crds/
 ```

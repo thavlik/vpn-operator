@@ -8,11 +8,6 @@ mod merge;
 pub use error::*;
 pub use merge::deep_merge;
 
-/// Name of the label in the Provider metadata corresponding to the
-/// "short name" that can be used in a Mask's spec. Multiple names
-/// can be specified by separating them with a comma.
-pub const PROVIDER_NAME_LABEL: &str = "vpn.beebs.dev/provider";
-
 /// The default interval for requeuing a managed resource.
 pub(crate) const PROBE_INTERVAL: Duration = Duration::from_secs(12);
 

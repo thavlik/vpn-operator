@@ -90,6 +90,13 @@ pub struct ProviderSpec {
     #[serde(rename = "maxSlots")]
     pub max_slots: usize,
 
+    /// Optional list of short names that Masks can use to refer
+    /// to this service at the exclusion of others. Example values
+    /// might be the service name ("nordvpn", "pia", etc.) or even
+    /// region names ("us-west", "uk-london", etc.) Whatever makes
+    /// sense in your context.
+    pub tags: Option<Vec<String>>,
+
     /// Optional list of namespaces that are allowed to use
     /// this Provider. If unset, all namespaces are allowed.
     pub namespaces: Option<Vec<String>>,
@@ -131,9 +138,6 @@ pub enum ProviderPhase {
     /// The resource first appeared to the controller.
     Pending,
 
-    /// The spec.secret resource is missing.
-    ErrSecretNotFound,
-
     /// The credentials are being verified with a gluetun pod.
     Verifying,
 
@@ -141,14 +145,17 @@ pub enum ProviderPhase {
     /// or Active upon the next reconciliation.
     Verified,
 
-    /// The credentials verification failed.
-    ErrVerifyFailed,
-
-    /// The resource is ready to be used.
+    /// The service is ready to be used.
     Ready,
 
     /// The service is in use by one or more Mask resources.
     Active,
+
+    /// The `Secret` resource referenced by `spec.secret` is missing.
+    ErrSecretNotFound,
+
+    /// The credentials verification process failed.
+    ErrVerifyFailed,
 }
 
 impl FromStr for ProviderPhase {
@@ -206,7 +213,7 @@ impl fmt::Display for ProviderPhase {
 pub struct MaskSpec {
     /// Optional list of providers to use at the exclusion of others.
     /// Omit the field if you are okay with being assigned any provider.
-    /// These values correspond to the Provider resource's metadata.labels["vpn.beebs.dev/provider"]
+    /// These values correspond to a Provider resource's spec.tags.
     pub providers: Option<Vec<String>>,
 }
 
@@ -259,10 +266,10 @@ pub enum MaskPhase {
     /// The resource first appeared to the controller.
     Pending,
 
-    /// The resource is waiting for a Provider to become available.
+    /// The resource is waiting for a slot with a Provider to become available.
     Waiting,
 
-    /// No Provider resources are available.
+    /// No suitable `Provider` resources were found.
     ErrNoProviders,
 
     /// The resource's VPN service credentials are ready to be used.

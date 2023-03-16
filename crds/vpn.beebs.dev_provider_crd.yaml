@@ -44,6 +44,12 @@ spec:
               secret:
                 description: Reference to a Secret resource containing the env vars that will be injected into the gluetun container.
                 type: string
+              tags:
+                description: Optional list of short names that Masks can use to refer to this service at the exclusion of others. Example values might be the service name ("nordvpn", "pia", etc.) or even region names ("us-west", "uk-london", etc.) Whatever makes sense in your context.
+                items:
+                  type: string
+                nullable: true
+                type: array
               verify:
                 description: VPN service verification options, used to ensure the credentials are valid before allowing Masks to use them.
                 nullable: true
@@ -121,12 +127,12 @@ spec:
                 description: A short description of the Provider's current state.
                 enum:
                 - Pending
-                - ErrSecretNotFound
                 - Verifying
                 - Verified
-                - ErrVerifyFailed
                 - Ready
                 - Active
+                - ErrSecretNotFound
+                - ErrVerifyFailed
                 nullable: true
                 type: string
             type: object

@@ -65,18 +65,20 @@ kind: Provider
 metadata:
   name: my-vpn
   namespace: default
-  labels:
-    # You can optionally specify label(s) so that Masks have the ability
-    # to select this service at the exclusion of others. Multiple labels
-    # can be specified by separating them with commas. This Provider will
-    # match the labels "my-vpn" or "default".
-    vpn.beebs.dev/provider: my-vpn,default
 spec:
   # In this example, the contractual terms with NordVPN allows up to
   # six devices to be active simultaneously. This field is mandatory.
   # You shouldn't attempt to create an obscene number of connections.
   # Always set it to sane value for your purposes. 
   maxSlots: 6
+
+  # You can optionally specify tag(s) so that Masks have the ability
+  # to select this service at the exclusion of others. Multiple tags
+  # can be specified by separating them with commas. This Provider will
+  # match either tag "default" or "my-vpn".
+  tags:
+    - default
+    - my-vpn
 
   # Corresponds to the above Secret's metadata.name
   secret: my-vpn-credentials
@@ -156,8 +158,8 @@ metadata:
   name: my-mask
   namespace: default
 spec:
-  # You can optionally require the Mask be assigned specific Providers.
-  # These value will correspond to Providers' metadata.labels["vpn.beebs.dev/provider"]
+  # You can optionally require the Mask be assigned Providers with
+  # specific tags. These value correspond to a Provider's spec.tags
   #providers: ["my-vpn"]
 ```
 
@@ -218,6 +220,31 @@ controllers:
 ```
 
 ## Notes
+### Mask Phase
+These are the enum values for the `Mask` resource's `status.phase` field, which represents an overview of its current state:
+- **`Pending`**: The resource first appeared to the controller.
+- **`Waiting`**: The resource is waiting for a slot with a `Provider` to become available.
+- **`Ready`**: The resource's VPN service credentials are ready to be used. 
+- **`Active`**: The resource's VPN service credentials are in use by a `Pod`.
+- **`ErrNoProviders`**: No suitable `Provider` resources were found.
+
+### Provider Phase
+The `Provider` resource also has enum values for its `status.phase`:
+- **`Pending`**: The resource first appeared to the controller.
+- **`Verifying`**: The credentials are being verified with a [gluetun](https://github.com/qdm12/gluetun) pod.
+- **`Verified`**: Verification is complete. The `Provider` will become `Ready` or `Active` upon the next reconciliation.
+- **`Ready`**: The service is ready to be used.
+- **`Active`**: The service is in use by one or more `Mask` resources.
+- **`ErrVerifyFailed`**: The credentials verification process failed.
+- **`ErrSecretNotFound`**: The `Secret` resource referenced by `spec.secret` is missing.
+
+### Status message
+In addition `phase`, the status objects of the `Mask` and `Provider` custom resources have a `message` field that is a more verbose description of why the resource is in the current phase. For example, you can view the status object of a `Mask` with `kubectl`:
+```bash
+kubectl get mask your-mask-name -o jsonpath='{.status}'
+```
+This information is useful for debugging and should be propogated to the status of any custom resource that owns a `Mask`.
+
 ### Ownership model
 Any `Pod` that uses a `Mask` should have a reference to in within [`metadata.ownerReferences`](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) with `blockOwnerDeletion=true`. This way, the deletion of the `Mask` will be blocked until the `Pod` is deleted, and the `Pod` will automatically be garbage collected when its `Mask` is deleted. The controller also uses this relationship to determine whether a `Mask` is in the `Ready` (not in use) or the `Active` (in use) phase.
 

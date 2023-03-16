@@ -28,7 +28,7 @@ spec:
             description: Mask is a resource that represents a VPN connection. It reserves a slot with a Provider resource, and creates a Secret resource containing the environment variables to be injected into the gluetun container.
             properties:
               providers:
-                description: Optional list of providers to use at the exclusion of others. Omit the field if you are okay with being assigned any provider. These values correspond to the Provider resource's metadata.labels["vpn.beebs.dev/provider"]
+                description: Optional list of providers to use at the exclusion of others. Omit the field if you are okay with being assigned any provider. These values correspond to a Provider resource's spec.tags.
                 items:
                   type: string
                 nullable: true

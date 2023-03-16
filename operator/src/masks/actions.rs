@@ -1,4 +1,4 @@
-use crate::util::{patch::*, Error, PROVIDER_NAME_LABEL, PROVIDER_UID_LABEL, VERIFICATION_LABEL};
+use crate::util::{patch::*, Error, PROVIDER_UID_LABEL, VERIFICATION_LABEL};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::{
     api::{DeleteParams, ObjectMeta, PostParams, Resource},
@@ -57,10 +57,10 @@ pub async fn unassign_provider(
 
 /// Lists all Provider resources, cluster-wide, that are in the Active phase.
 /// An optional filter can specified, in which case only Providers with a
-/// matching vpn.beebs.dev/provider label will be returned.
+/// matching tags will be returned.
 async fn list_active_providers(
     client: Client,
-    filter_labels: Option<&Vec<String>>,
+    filter_tags: Option<&Vec<String>>,
     mask_namespace: &str,
 ) -> Result<Vec<Provider>, Error> {
     let api: Api<Provider> = Api::all(client);
@@ -88,16 +88,14 @@ async fn list_active_providers(
                 })
         })
         .collect();
-    if let Some(ref filter_labels) = filter_labels {
-        // The Mask is asking for a specific Provider.
-        // Only return Providers with a matching label.
+    if let Some(ref filter_tags) = filter_tags {
+        // The Mask is asking for one or more specific Providers.
+        // Only return Providers with matching tags.
         providers = providers
             .into_iter()
             .filter(|p| {
-                p.metadata.labels.as_ref().map_or(false, |l| {
-                    l.get(PROVIDER_NAME_LABEL).as_ref().map_or(false, |v| {
-                        v.split(",").any(|p| filter_labels.iter().any(|l| l == p))
-                    })
+                p.spec.tags.as_ref().map_or(false, |t| {
+                    t.iter().any(|v| filter_tags.iter().any(|l| l == v))
                 })
             })
             .collect();
@@ -263,6 +261,8 @@ pub async fn assign_provider(
     // For the first attempt, filter out the Providers that have reached
     // their capacity. This way we can try not slamming the kube api server
     // with a bunch of requests that are likely to fail in the first place.
+    // The status object may be stale, so if we fail the first attempt we
+    // won't do this the second time.
     let providers = providers
         .into_iter()
         .filter(|p| {
@@ -283,7 +283,7 @@ pub async fn assign_provider(
         list_active_providers(client.clone(), instance.spec.providers.as_ref(), namespace).await?;
     if pruned || providers.len() != new_providers.len() {
         // Try a second time if we pruned or if we excluded any Providers
-        // during the first attempt due to a potentially stale status object.
+        // during the first attempt due to possibly stale status objects.
         if assign_provider_base(client.clone(), name, namespace, instance, &new_providers).await? {
             return Ok(true);
         }

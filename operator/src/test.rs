@@ -1,4 +1,3 @@
-use crate::util::PROVIDER_NAME_LABEL;
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::{Namespace, Secret};
 use kube::{
@@ -97,11 +96,6 @@ async fn get_test_provider(client: Client, name: &str, namespace: &str) -> Resul
         metadata: ObjectMeta {
             name: Some(name.to_owned()),
             namespace: Some(namespace.to_owned()),
-            labels: Some({
-                let mut labels = BTreeMap::new();
-                labels.insert(PROVIDER_NAME_LABEL.to_owned(), name.to_owned());
-                labels
-            }),
             ..Default::default()
         },
         spec: ProviderSpec {
@@ -111,6 +105,8 @@ async fn get_test_provider(client: Client, name: &str, namespace: &str) -> Resul
             secret: name.to_owned(),
             // Only assign this Provider to Masks in the same namespace.
             namespaces: Some(vec![namespace.to_owned()]),
+            // Allow this Provider to be assigned to Masks requesting this tag.
+            tags: Some(vec![name.to_owned()]),
             // We currently need to skip verification for testing.
             verify: Some(ProviderVerifySpec {
                 // Skip verification if we are using the mock credentials.

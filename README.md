@@ -65,6 +65,9 @@ metadata:
   name: my-vpn
   namespace: default
 spec:
+  # Corresponds to the above Secret's metadata.name
+  secret: my-vpn-credentials
+  
   # In this example, the contractual terms with NordVPN allows up to
   # six devices to be active simultaneously, and we want to reserve
   # a single slot for our local machine. This limit is a requirement.
@@ -82,9 +85,6 @@ spec:
     - default
     - preferred
     - my-vpn
-
-  # Corresponds to the above Secret's metadata.name
-  secret: my-vpn-credentials
 
   # The controller will attempt to verify that the VPN credentials
   # are correct and the service works. It will do this by injecting

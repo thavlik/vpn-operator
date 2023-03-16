@@ -1,5 +1,5 @@
 # vpn-operator
-> Note the master branch is unstable and may change at any time.
+> Note that everything is experimental and may change at any time.
 
 Kubernetes operator for VPN sidecars written in pure [Rust](https://www.rust-lang.org/). This operator simplifies the process of hiding your pods behind one or more VPN services. Instead of assigning the same exact VPN sidecar to every pod you want cloaked, you use the included `Provider` and `Mask` Custom Resources to automate credentials distribution across any number of pods and VPN services.
 

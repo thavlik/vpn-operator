@@ -533,7 +533,6 @@ fn determine_verify_pod_action(instance: &Provider, pod: &Pod) -> Result<Provide
         // Kubernetes docs, but it doesn't seem to be the case.
         "Succeeded" => ProviderAction::Verified,
         // Unknown error.
-        // TODO: post failure error message to status object.
         _ => ProviderAction::VerifyFailed("Unknown error occurred during verification.".to_owned()),
     })
 }

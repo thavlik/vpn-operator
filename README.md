@@ -5,11 +5,16 @@ Kubernetes operator for VPN sidecars written in pure [Rust](https://www.rust-lan
 This operator simplifies the process of hiding your pods behind one or more VPN services. Instead of assigning the same exact VPN sidecar to every pod you want cloaked, you use the included `Provider` and `Mask` Custom Resources to automate credentials distribution across any number of VPN services.
 
 ## Installation
-1. Apply the Custom Resource Definitions:
+1. Clone the repository:
+```bash
+git clone https://github.com/thavlik/vpn-operator
+cd vpn-operator
+```
+2. Apply the Custom Resource Definitions:
 ```bash
 kubectl apply -f crds/
 ```
-2. Install the vpn-operator [helm chart](https://helm.sh/):
+3. Install the vpn-operator [Helm chart](https://helm.sh/):
 ```bash
 # Create your chart configuration file.
 cat <<EOF | echo "$(</dev/stdin)" > values.yaml

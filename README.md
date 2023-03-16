@@ -99,7 +99,7 @@ spec:
     # knowing if the credentials are valid.
     skip: false
 
-    # Amount of time that can elapse before verification is failed.
+    # Amount of time that can elapse before verification will fail.
     timeout: 1m30s
 
     # You can configure periodic verification here. It's not terribly

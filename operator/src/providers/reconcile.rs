@@ -36,7 +36,6 @@ pub async fn run(client: Client) -> Result<(), Error> {
     // - `on_error` function to call whenever reconciliation fails.
     Controller::new(crd_api, ListParams::default())
         .owns(Api::<ConfigMap>::all(client.clone()), ListParams::default())
-        .owns(Api::<Pod>::all(client.clone()), ListParams::default())
         .owns(Api::<Mask>::all(client), ListParams::default())
         .run(reconcile, on_error, context)
         .for_each(|_reconciliation_result| async move {
@@ -105,6 +104,9 @@ enum ProviderAction {
 
     /// Set the status to ErrVerifyFailed.
     VerifyFailed(String),
+
+    /// Set the `Provider` resource status.phase to Ready.
+    Ready,
 
     /// Set the `Provider` resource status.phase to Active.
     Active { active_slots: usize },
@@ -295,6 +297,13 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // Requeue immediately to proceed with reconciliation.
             Action::requeue(Duration::ZERO)
         }
+        ProviderAction::Ready => {
+            // Update the phase of the `Provider` resource to Ready.
+            actions::ready(client, &instance).await?;
+
+            // Requeue after a short delay.
+            Action::requeue(PROBE_INTERVAL)
+        }
         ProviderAction::Active { active_slots } => {
             // Update the phase of the `Provider` resource to Active.
             actions::active(client, &instance, active_slots).await?;
@@ -474,7 +483,9 @@ fn determine_verify_mask_action(mask: Mask) -> Result<ProviderAction, Error> {
             message: "Waiting on the controller for the verification Mask.".to_owned(),
         },
         // The Mask is ready to be used in the verification Pod.
-        Some(MaskPhase::Active) => ProviderAction::CreateVerifyPod(mask),
+        // It should never be Active here, but if it, we know the
+        // Pod doesn't exist and we shouldn't be exceeding maxSlots.
+        Some(MaskPhase::Ready) | Some(MaskPhase::Active) => ProviderAction::CreateVerifyPod(mask),
         // The Provider has too many active slots, we will have to wait.
         Some(MaskPhase::Waiting) => ProviderAction::Verifying {
             start_time: None,
@@ -654,7 +665,6 @@ async fn count_reservations(
     Ok(Api::<ConfigMap>::namespaced(client, namespace)
         .list(&ListParams::default())
         .await?
-        .items
         .into_iter()
         .filter(|cm| {
             // Only inspect ConfigMaps owned by this Provider.
@@ -673,12 +683,19 @@ async fn determine_status_action(
     namespace: &str,
     instance: &Provider,
 ) -> Result<ProviderAction, Error> {
+    // Count the ConfigMaps with the Provider as the owner.
+    let active_slots = count_reservations(client, namespace, instance).await?;
     let (phase, age) = get_provider_phase(instance)?;
-    if phase != ProviderPhase::Active || age > PROBE_INTERVAL {
-        // Count the ConfigMaps with the Provider as the owner.
-        let active_slots = count_reservations(client, namespace, instance).await?;
-        // Keep the Active status up to date.
-        return Ok(ProviderAction::Active { active_slots });
+    if active_slots > 0 {
+        if phase != ProviderPhase::Active || age > PROBE_INTERVAL {
+            // Keep the Active status up to date.
+            return Ok(ProviderAction::Active { active_slots });
+        }
+    } else {
+        if phase != ProviderPhase::Ready || age > PROBE_INTERVAL {
+            // Keep the Ready status up to date.
+            return Ok(ProviderAction::Ready);
+        }
     }
     // Nothing to do, resource is fully reconciled.
     Ok(ProviderAction::NoOp)

@@ -14,7 +14,7 @@ spec:
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.activeSlots
-      name: IN USE
+      name: USED
       type: integer
     - jsonPath: .status.phase
       name: PHASE
@@ -125,6 +125,7 @@ spec:
                 - Verifying
                 - Verified
                 - ErrVerifyFailed
+                - Ready
                 - Active
                 nullable: true
                 type: string

@@ -61,7 +61,8 @@ sleep $INITIAL_WAIT
 TIMEOUT=5 # IP service request timeout (seconds)
 IP=$(curl -m $TIMEOUT -s $IP_SERVICE)
 ITER=0
-# IP service may fail or return the same IP address.
+# Continue probing the IP service if it fails while the
+# VPN is connecting or returns the initial IP address.
 while [ $? -ne 0 ] || [ \"$IP\" = \"$INITIAL_IP\" ]; do
     echo \"Current IP address is $IP, sleeping for $SLEEP_TIME\"
     sleep $SLEEP_TIME
@@ -153,11 +154,23 @@ pub async fn pending(client: Client, instance: &Provider) -> Result<(), Error> {
     Ok(())
 }
 
-/// Updates the Provider's phase to Active, which indicates
+/// Updates the Provider's phase to Ready, which indicates
 /// the VPN provider is ready to use.
+pub async fn ready(client: Client, instance: &Provider) -> Result<(), Error> {
+    patch_status(client, instance, |status| {
+        status.message = Some("VPN service is ready to use.".to_owned());
+        status.phase = Some(ProviderPhase::Ready);
+        status.active_slots = Some(0);
+    })
+    .await?;
+    Ok(())
+}
+
+/// Updates the Provider's phase to Active, which indicates
+/// the VPN provider is in use by one or more pods.
 pub async fn active(client: Client, instance: &Provider, active_slots: usize) -> Result<(), Error> {
     patch_status(client, instance, |status| {
-        status.message = Some("VPN provider resource is ready to use.".to_owned());
+        status.message = Some(format!("VPN service is in use by {} Masks.", active_slots));
         status.phase = Some(ProviderPhase::Active);
         status.active_slots = Some(active_slots);
     })
@@ -186,7 +199,6 @@ async fn list_masks(client: Client) -> Result<Vec<Mask>, Error> {
     Ok(api
         .list(&ListParams::default())
         .await?
-        .items
         .into_iter()
         .filter(|p| p.metadata.deletion_timestamp.is_none())
         .collect())
@@ -367,7 +379,7 @@ fn verify_pod(
     namespace: &str,
     instance: &Provider,
     secret: &Secret,
-    _mask: &Mask,
+    mask: &Mask,
 ) -> Result<Pod, Error> {
     let overrides = instance
         .spec
@@ -394,7 +406,9 @@ fn verify_pod(
                 labels.insert("app".to_owned(), MANAGER_NAME.to_owned());
                 labels
             }),
-            owner_references: Some(vec![instance.controller_owner_ref(&()).unwrap()]),
+            // Setting the Mask as the owner will allow the phase
+            // to properly update as Active when the Pod exists.
+            owner_references: Some(vec![mask.controller_owner_ref(&()).unwrap()]),
             ..Default::default()
         },
         spec: Some(PodSpec {

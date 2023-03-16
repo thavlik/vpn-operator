@@ -20,6 +20,8 @@ rules:
     resources:
       - providers
       - providers/status
+      - masks
+      - masks/status
     verbs:
       - get
       - list
@@ -31,10 +33,5 @@ rules:
       - masks
       - masks/status
     verbs:
-      - get
       - create
       - delete
-      - list
-      - patch
-      - update
-      - watch

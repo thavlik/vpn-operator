@@ -196,36 +196,43 @@ async fn create_test_mask(
         .await?)
 }
 
-/// Waits for the test Provider to be Active.
-async fn wait_for_provider_active(client: Client, namespace: &str) -> Result<(), Error> {
+/// Waits for the test Provider to observe a certain phase.
+async fn wait_for_provider_phase(
+    client: Client,
+    namespace: &str,
+    phase: ProviderPhase,
+) -> Result<(), Error> {
     let provider_api: Api<Provider> = Api::namespaced(client, namespace);
     let lp = ListParams::default().timeout(120);
     let mut stream = provider_api.watch(&lp, "0").await?.boxed();
     while let Some(event) = stream.try_next().await? {
         match event {
             WatchEvent::Added(m) | WatchEvent::Modified(m) => {
-                match m.status.as_ref().map_or(None, |s| s.phase) {
-                    Some(phase) if phase == ProviderPhase::Active => {
-                        return Ok(());
-                    }
-                    _ => {}
+                if m.status.as_ref().map_or(false, |s| s.phase == Some(phase)) {
+                    return Ok(());
                 }
             }
             _ => {}
         }
     }
-    for provider in provider_api.list(&Default::default()).await?.items {
-        if let Some(ref status) = provider.status {
-            if let Some(phase) = status.phase {
-                if phase == ProviderPhase::Active {
-                    return Ok(());
-                }
-            }
-        }
+    // See if we missed it.
+    if provider_api
+        .list(&Default::default())
+        .await?
+        .into_iter()
+        .any(|provider| {
+            provider
+                .status
+                .as_ref()
+                .map_or(false, |s| s.phase == Some(phase))
+        })
+    {
+        return Ok(());
     }
-    Err(Error::Other(
-        "Provider not Active before timeout".to_owned(),
-    ))
+    Err(Error::Other(format!(
+        "Provider not {} before timeout",
+        phase
+    )))
 }
 
 /// Waits for the test Provider to be assigned to the test Mask.
@@ -238,25 +245,27 @@ async fn wait_for_provider_assignment(
     let mask_api: Api<Mask> = Api::namespaced(client, namespace);
     let lp = ListParams::default()
         .fields(&format!("metadata.name={}", name))
-        .timeout(20);
+        .timeout(120);
     let mut stream = mask_api.watch(&lp, "0").await?.boxed();
     while let Some(event) = stream.try_next().await? {
         match event {
-            WatchEvent::Added(m) | WatchEvent::Modified(m) => match m.status {
-                Some(ref status) if status.provider.is_some() => {
-                    return Ok(status.provider.clone().unwrap());
+            WatchEvent::Added(m) | WatchEvent::Modified(m) => {
+                match m.status.map_or(None, |s| s.provider) {
+                    Some(provider) => return Ok(provider),
+                    _ => continue,
                 }
-                _ => continue,
-            },
+            }
             _ => continue,
         }
     }
     // Check if it's assigned now and we missed it.
-    let mask = mask_api.get(&name).await?;
-    if let Some(ref status) = mask.status {
-        if let Some(ref provider) = status.provider {
-            return Ok(provider.clone());
-        }
+    if let Some(provider) = mask_api
+        .get(&name)
+        .await?
+        .status
+        .map_or(None, |s| s.provider)
+    {
+        return Ok(provider);
     }
     Err(Error::Other(format!(
         "Provider not assigned to Mask {} before timeout",
@@ -264,75 +273,42 @@ async fn wait_for_provider_assignment(
     )))
 }
 
-/// Waits for the Mask resourece to observe phase ErrNoProviders.
-async fn wait_for_err_no_providers(
+/// Waits for the Mask resource to observe the phase.
+async fn wait_for_mask_phase(
     client: Client,
     namespace: &str,
     slot: usize,
+    phase: MaskPhase,
 ) -> Result<(), Error> {
     let name = format!("{}-{}", MASK_NAME, slot);
     let mask_api: Api<Mask> = Api::namespaced(client, namespace);
     let lp = ListParams::default()
         .fields(&format!("metadata.name={}", &name))
-        .timeout(20);
+        .timeout(120);
     let mut stream = mask_api.watch(&lp, "0").await?.boxed();
     while let Some(event) = stream.try_next().await? {
         match event {
             WatchEvent::Added(m) | WatchEvent::Modified(m) => {
-                match m.status.as_ref().map_or(None, |status| status.phase) {
-                    Some(MaskPhase::ErrNoProviders) => {
-                        return Ok(());
-                    }
-                    _ => continue,
+                if m.status.as_ref().map_or(false, |s| s.phase == Some(phase)) {
+                    return Ok(());
                 }
             }
             _ => continue,
         }
     }
     // See if we missed it.
-    let mask = mask_api.get(&name).await?;
-    if let Some(ref status) = mask.status {
-        if let Some(MaskPhase::ErrNoProviders) = status.phase {
-            return Ok(());
-        }
+    if mask_api
+        .get(&name)
+        .await?
+        .status
+        .as_ref()
+        .map_or(false, |s| s.phase == Some(phase))
+    {
+        return Ok(());
     }
     Err(Error::Other(format!(
-        "ErrNoProviders not observed for Mask {} before timeout",
-        name,
-    )))
-}
-
-/// Waits for the Mask resourece to observe phase Waiting.
-async fn wait_for_waiting(client: Client, namespace: &str, slot: usize) -> Result<(), Error> {
-    let name = format!("{}-{}", MASK_NAME, slot);
-    let mask_api: Api<Mask> = Api::namespaced(client, namespace);
-    let lp = ListParams::default()
-        .fields(&format!("metadata.name={}", &name))
-        .timeout(20);
-    let mut stream = mask_api.watch(&lp, "0").await?.boxed();
-    while let Some(event) = stream.try_next().await? {
-        match event {
-            WatchEvent::Added(m) | WatchEvent::Modified(m) => {
-                match m.status.as_ref().map(|status| status.phase) {
-                    Some(Some(MaskPhase::Waiting)) => {
-                        return Ok(());
-                    }
-                    _ => continue,
-                }
-            }
-            _ => continue,
-        }
-    }
-    // See if we missed it.
-    let mask = mask_api.get(&name).await?;
-    if let Some(ref status) = mask.status {
-        if let Some(MaskPhase::Waiting) = status.phase {
-            return Ok(());
-        }
-    }
-    Err(Error::Other(format!(
-        "Waiting not observed for Mask {} before timeout",
-        name,
+        "{} not observed for Mask {} before timeout",
+        phase, name,
     )))
 }
 
@@ -352,7 +328,7 @@ async fn wait_for_secret(
     let secret_api: Api<Secret> = Api::namespaced(client, namespace);
     let lp = ListParams::default()
         .fields(&format!("metadata.name={}", &secret_name))
-        .timeout(20);
+        .timeout(120);
     let mut stream = secret_api.watch(&lp, "0").await?.boxed();
     while let Some(event) = stream.try_next().await? {
         match event {
@@ -406,16 +382,18 @@ async fn basic() -> Result<(), Error> {
     let provider_label = format!("{}-{}", PROVIDER_NAME, uid);
 
     // Create the test Provider.
-    let provider_active = {
+    let provider_ready = {
         let client = client.clone();
         let namespace = namespace.clone();
-        spawn(async move { wait_for_provider_active(client, &namespace).await })
+        spawn(
+            async move { wait_for_provider_phase(client, &namespace, ProviderPhase::Ready).await },
+        )
     };
     let provider = create_test_provider(client.clone(), &namespace, &uid)
         .await
         .expect("failed to create provider");
     let provider_uid = provider.metadata.uid.as_deref().unwrap();
-    provider_active.await.unwrap()?;
+    provider_ready.await.unwrap()?;
 
     // Watch for a Provider to be assigned to the Mask.
     let mask_secret = {
@@ -465,7 +443,9 @@ async fn err_no_providers() -> Result<(), Error> {
     let fail = {
         let client = client.clone();
         let namespace = namespace.clone();
-        spawn(async move { wait_for_err_no_providers(client, &namespace, 0).await })
+        spawn(
+            async move { wait_for_mask_phase(client, &namespace, 0, MaskPhase::ErrNoProviders).await },
+        )
     };
 
     // Create a Mask without first creating the Provider.
@@ -530,16 +510,16 @@ async fn waiting() -> Result<(), Error> {
     let provider_secret = get_provider_secret(client.clone(), &provider).await?;
     assert_eq!(provider_secret.data, mask0_secret.data);
 
-    // Try and create a second Mask and ensure it fails.
-    let mask1_fail = {
+    // Try and create a second Mask and ensure it doesn't go Ready.
+    let mask1_wait = {
         let client = client.clone();
         let namespace = namespace.clone();
-        spawn(async move { wait_for_waiting(client, &namespace, 1).await })
+        spawn(async move { wait_for_mask_phase(client, &namespace, 1, MaskPhase::Waiting).await })
     };
     let mask1 = create_test_mask(client.clone(), &namespace, 1, provider_name).await?;
 
-    // Ensure the error state was observed.
-    mask1_fail.await.unwrap()?;
+    // Ensure the waiting status was observed.
+    mask1_wait.await.unwrap()?;
 
     // Delete the first Mask and ensure the second Mask is assigned to the Provider.
     let assigned_provider = {

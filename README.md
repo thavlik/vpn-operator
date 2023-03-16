@@ -85,7 +85,7 @@ spec:
   verify:
     # Set to true to bypass credentials verification. This will allow
     # the structure of the Secret to by anything you want, but the
-    # Provider will immediately enter the Active phase without truly
+    # Provider will immediately enter the Ready phase without truly
     # knowing if the credentials are ready to use.
     skip: false
 
@@ -133,7 +133,7 @@ spec:
           image: curlimages/curl:7.88.1
 ```
 
-2. Make sure the `Provider` enters the `Active` phase:
+2. Make sure the `Provider` enters the `Ready` phase:
 ```bash
 kubectl get provider -Aw
 ```
@@ -156,7 +156,7 @@ spec:
   #providers: ["my-vpn"]
 ```
 
-4. Wait for the `Mask`'s phase to be `Active` before using it:
+4. Wait for the `Mask`'s phase to be `Ready` before using it:
 ```bash
 kubectl get mask -Aw
 ```

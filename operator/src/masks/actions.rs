@@ -26,16 +26,22 @@ pub async fn unassign_provider(
     namespace: &str,
     instance: &Mask,
 ) -> Result<(), Error> {
-    if instance.status.as_ref().unwrap().provider.is_some() {
-        // Delete the credentials Secret.
-        delete_secret(client.clone(), namespace, instance).await?;
-
-        // Delete the reservation ConfigMap so it can be reused.
-        // This doesn't always happen, in which case there will
-        // be no available slots for any providers. This scenario
-        // will require a pruning operator to resolve.
-        delete_reservation(client.clone(), name, namespace, instance).await?;
+    if instance
+        .status
+        .as_ref()
+        .map_or(true, |s| s.provider.is_none())
+    {
+        return Ok(());
     }
+
+    // Delete the credentials Secret.
+    delete_secret(client.clone(), namespace, instance).await?;
+
+    // Delete the reservation ConfigMap so it can be reused.
+    // This doesn't always happen, in which case there will
+    // be no available slots for any providers. This scenario
+    // will require a pruning operator to resolve.
+    delete_reservation(client.clone(), name, namespace, instance).await?;
 
     // Patch the Mask resource to remove the provider. We do
     // this last because the previous operations require so.
@@ -73,17 +79,13 @@ async fn list_active_providers(
                 .map_or(true, |ns| ns.iter().any(|n| n == mask_namespace))
         })
         .filter(|p| {
-            // Ignore Providers that aren't in the Active phase.
+            // Ignore Providers that aren't in the Ready or Active phases.
             p.status
                 .as_ref()
-                .map_or(false, |s| s.phase == Some(ProviderPhase::Active))
-        })
-        .filter(|p| {
-            // Ignore Providers that have reached their capacity.
-            p.status
-                .as_ref()
-                .map_or(None, |s| s.active_slots)
-                .map_or(false, |a| a < p.spec.max_slots)
+                .map_or(None, |s| s.phase)
+                .map_or(false, |p| {
+                    p == ProviderPhase::Ready || p == ProviderPhase::Active
+                })
         })
         .collect();
     if let Some(ref filter_labels) = filter_labels {
@@ -194,7 +196,6 @@ pub async fn assign_verify_provider(
     let provider = provider_api
         .list(&Default::default())
         .await?
-        .items
         .into_iter()
         .filter(|p| p.metadata.uid.as_deref() == Some(provider_uid))
         .next()
@@ -248,29 +249,42 @@ pub async fn assign_provider(
     let providers =
         list_active_providers(client.clone(), instance.spec.providers.as_ref(), namespace).await?;
     if providers.is_empty() {
-        // Reflect the error in the status.
+        // No valid Providers at all. Reflect the error in the status.
         patch_status(client, instance, |status| {
             status.phase = Some(MaskPhase::ErrNoProviders);
             status.message = Some("No VPN providers available.".to_owned());
         })
         .await?;
 
-        // No reason to prune and retry.
+        // No reason to prune or retry.
         return Ok(false);
     }
 
-    // Try to assign a provider.
+    // For the first attempt, filter out the Providers that have reached
+    // their capacity. This way we can try not slamming the kube api server
+    // with a bunch of requests that are likely to fail in the first place.
+    let providers = providers
+        .into_iter()
+        .filter(|p| {
+            p.status.as_ref().map_or(true, |s| {
+                s.active_slots.map_or(true, |a| a < p.spec.max_slots)
+            })
+        })
+        .collect();
+
+    // Try to assign a provider for the first time.
     if assign_provider_base(client.clone(), name, namespace, instance, &providers).await? {
         return Ok(true);
     }
 
-    // Remove any dangling reservations.
-    if prune(client.clone()).await? {
-        // One or more dangling reservations were removed, so retrying should succeed.
-        let providers =
-            list_active_providers(client.clone(), instance.spec.providers.as_ref(), namespace)
-                .await?;
-        if assign_provider_base(client.clone(), name, namespace, instance, &providers).await? {
+    // Remove dangling reservations and try again.
+    let pruned = prune(client.clone()).await?;
+    let new_providers =
+        list_active_providers(client.clone(), instance.spec.providers.as_ref(), namespace).await?;
+    if pruned || providers.len() != new_providers.len() {
+        // Try a second time if we pruned or if we excluded any Providers
+        // during the first attempt due to a potentially stale status object.
+        if assign_provider_base(client.clone(), name, namespace, instance, &new_providers).await? {
             return Ok(true);
         }
     }
@@ -542,11 +556,21 @@ pub async fn delete_reservation(
     }
 }
 
+/// Updates the Mask's phase to Ready.
+pub async fn ready(client: Client, instance: &Mask) -> Result<(), Error> {
+    patch_status(client, instance, |status| {
+        status.phase = Some(MaskPhase::Ready);
+        status.message = Some("Mask is ready to use.".to_owned())
+    })
+    .await?;
+    Ok(())
+}
+
 /// Updates the Mask's phase to Active.
-pub async fn active(client: Client, instance: &Mask) -> Result<(), Error> {
+pub async fn active(client: Client, instance: &Mask, pod_name: &str) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.phase = Some(MaskPhase::Active);
-        status.message = Some("Mask is ready to use.".to_owned())
+        status.message = Some(format!("Mask is in use by Pod {}", pod_name));
     })
     .await?;
     Ok(())

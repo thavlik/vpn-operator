@@ -1,6 +1,6 @@
 use chrono::Utc;
 use futures::stream::StreamExt;
-use k8s_openapi::api::core::v1::Secret;
+use k8s_openapi::api::core::v1::{Pod, Secret};
 use kube::Resource;
 use kube::ResourceExt;
 use kube::{
@@ -34,7 +34,8 @@ pub async fn run(client: Client) -> Result<(), Error> {
     // - `reconcile` function with reconciliation logic to be called each time a resource of `Mask` kind is created/updated/deleted,
     // - `on_error` function to call whenever reconciliation fails.
     Controller::new(crd_api, ListParams::default())
-        .owns(Api::<Secret>::all(client), ListParams::default())
+        .owns(Api::<Secret>::all(client.clone()), ListParams::default())
+        .owns(Api::<Pod>::all(client), ListParams::default())
         .run(reconcile, on_error, context)
         .for_each(|_reconciliation_result| async move {
             //match reconciliation_result {
@@ -79,7 +80,9 @@ enum MaskAction {
     /// Create the credentials secret for the Mask.
     CreateSecret,
     /// Signals the Mask is ready to be used.
-    Active,
+    Ready,
+    /// Signals that there are Pods using the Mask.
+    Active { pod_name: String },
     /// The Mask resource is in desired state and requires no actions to be taken.
     NoOp,
 }
@@ -206,9 +209,16 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             // Makes no sense to requeue after deleting, as the resource is gone.
             Action::await_change()
         }
-        MaskAction::Active => {
+        MaskAction::Ready => {
             // Update the phase to Active.
-            actions::active(client.clone(), &instance).await?;
+            actions::ready(client.clone(), &instance).await?;
+
+            // Resource is fully reconciled.
+            Action::requeue(PROBE_INTERVAL)
+        }
+        MaskAction::Active { pod_name } => {
+            // Update the phase to Active.
+            actions::active(client.clone(), &instance, &pod_name).await?;
 
             // Resource is fully reconciled.
             Action::requeue(PROBE_INTERVAL)
@@ -336,26 +346,49 @@ async fn determine_action(
     // Determine if we need to take an action given that the Mask
     // resource has been assigned a VPN provider.
     if let Some(action) =
-        determine_provider_action(client, name, namespace, instance, provider).await?
+        determine_provider_action(client.clone(), name, namespace, instance, provider).await?
     {
         return Ok(action);
     }
 
-    // Keep the Active status up-to-date.
-    determine_status_action(instance)
+    // Keep the Ready/Active status up-to-date.
+    determine_status_action(client, instance).await
+}
+
+/// Returns the Pod owned by the Mask. Pods using Masks can be
+/// configured to use the Mask as the owner, resulting in the Pod's
+/// deletion if the Mask is ever deleted. It also allows the Mask
+/// controller the ability to determine if a Mask is in use.
+async fn get_owned_pod(client: Client, instance: &Mask) -> Result<Option<Pod>, Error> {
+    let owner_uid = instance.metadata.uid.as_deref().unwrap();
+    let pod_api: Api<Pod> =
+        Api::namespaced(client, instance.metadata.namespace.as_deref().unwrap());
+    Ok(pod_api
+        .list(&ListParams::default())
+        .await?
+        .into_iter()
+        .filter(|p| {
+            p.metadata
+                .owner_references
+                .as_ref()
+                .map_or(false, |or| or.iter().any(|r| r.uid == owner_uid))
+        })
+        .next())
 }
 
 /// Determines the action given that the only thing left to do
-/// is periodically keeping the Active phase up-to-date.
-fn determine_status_action(instance: &Mask) -> Result<MaskAction, Error> {
-    // Ensure the phase is Active and recent.
+/// is periodically keeping the Ready/Active phase up-to-date.
+async fn determine_status_action(client: Client, instance: &Mask) -> Result<MaskAction, Error> {
     let (phase, age) = get_mask_phase(instance)?;
-    if phase != MaskPhase::Active || age > PROBE_INTERVAL {
-        // Keep the Active status up-to-date.
-        return Ok(MaskAction::Active);
-    }
-    // Nothing to do, resource is fully reconciled.
-    Ok(MaskAction::NoOp)
+    Ok(match get_owned_pod(client, instance).await? {
+        Some(owned_pod) if phase != MaskPhase::Active || age > PROBE_INTERVAL => {
+            MaskAction::Active {
+                pod_name: owned_pod.metadata.name.clone().unwrap(),
+            }
+        }
+        None if phase != MaskPhase::Ready || age > PROBE_INTERVAL => MaskAction::Ready,
+        _ => MaskAction::NoOp,
+    })
 }
 
 /// Actions to be taken when a reconciliation fails - for whatever reason.

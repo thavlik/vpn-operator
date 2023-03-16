@@ -51,6 +51,7 @@ spec:
                 - Pending
                 - Waiting
                 - ErrNoProviders
+                - Ready
                 - Active
                 nullable: true
                 type: string

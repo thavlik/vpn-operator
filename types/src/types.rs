@@ -2,7 +2,7 @@ use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
 pub struct ProviderVerifyContainerOverridesSpec {
@@ -76,7 +76,7 @@ pub struct ProviderVerifySpec {
 )]
 #[kube(derive = "Default")]
 #[kube(
-    printcolumn = "{\"jsonPath\": \".status.activeSlots\", \"name\": \"IN USE\", \"type\": \"integer\" }"
+    printcolumn = "{\"jsonPath\": \".status.activeSlots\", \"name\": \"USED\", \"type\": \"integer\" }"
 )]
 #[kube(
     printcolumn = "{\"jsonPath\": \".status.phase\", \"name\": \"PHASE\", \"type\": \"string\" }"
@@ -137,14 +137,17 @@ pub enum ProviderPhase {
     /// The credentials are being verified with a gluetun pod.
     Verifying,
 
-    /// Verification is complete. The Provider will become Active
-    /// upon the next reconciliation.
+    /// Verification is complete. The Provider will become Ready
+    /// or Active upon the next reconciliation.
     Verified,
 
     /// The credentials verification failed.
     ErrVerifyFailed,
 
     /// The resource is ready to be used.
+    Ready,
+
+    /// The service is in use by one or more Mask resources.
     Active,
 }
 
@@ -158,8 +161,23 @@ impl FromStr for ProviderPhase {
             "Verifying" => Ok(ProviderPhase::Verifying),
             "Verified" => Ok(ProviderPhase::Verified),
             "ErrVerifyFailed" => Ok(ProviderPhase::ErrVerifyFailed),
+            "Ready" => Ok(ProviderPhase::Ready),
             "Active" => Ok(ProviderPhase::Active),
             _ => Err(()),
+        }
+    }
+}
+
+impl fmt::Display for ProviderPhase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProviderPhase::Pending => write!(f, "Pending"),
+            ProviderPhase::ErrSecretNotFound => write!(f, "ErrSecretNotFound"),
+            ProviderPhase::Verifying => write!(f, "Verifying"),
+            ProviderPhase::Verified => write!(f, "Verified"),
+            ProviderPhase::ErrVerifyFailed => write!(f, "ErrVerifyFailed"),
+            ProviderPhase::Ready => write!(f, "Ready"),
+            ProviderPhase::Active => write!(f, "Active"),
         }
     }
 }
@@ -247,7 +265,10 @@ pub enum MaskPhase {
     /// No Provider resources are available.
     ErrNoProviders,
 
-    /// The VPN credentials are ready to be used.
+    /// The resource's VPN service credentials are ready to be used.
+    Ready,
+
+    /// The resource's VPN service credentials are in use by a Pod.
     Active,
 }
 
@@ -257,10 +278,23 @@ impl FromStr for MaskPhase {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Pending" => Ok(MaskPhase::Pending),
+            "Ready" => Ok(MaskPhase::Ready),
             "Active" => Ok(MaskPhase::Active),
             "Waiting" => Ok(MaskPhase::Waiting),
             "ErrNoProviders" => Ok(MaskPhase::ErrNoProviders),
             _ => Err(()),
+        }
+    }
+}
+
+impl fmt::Display for MaskPhase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MaskPhase::Pending => write!(f, "Pending"),
+            MaskPhase::Ready => write!(f, "Ready"),
+            MaskPhase::Active => write!(f, "Active"),
+            MaskPhase::Waiting => write!(f, "Waiting"),
+            MaskPhase::ErrNoProviders => write!(f, "ErrNoProviders"),
         }
     }
 }

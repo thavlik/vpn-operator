@@ -274,7 +274,7 @@ kubectl get crd masks.vpn.beebs.dev -o yaml
 ### Development
 Notes on the operator code itself can be found in [operator/README.md](operator/README.md).
 
-### Choosing a VPN service
+### Tips for choosing a VPN service
 Some services are more amenable for use with vpn-operator than others. Maximum number of connected devices is an important detail.
 
 It's probably worth paying a premium to have access to a larger pool of IPs across more regions. For example, when using a `Mask` to download a video using a cloaked `Pod` (such as with [ytdl-operator](https://github.com/thavlik/ytdl-operator)), failed attempts due to constantly using banned IPs will slow overall progress more than if the service's bandwidth were reduced. Slow downloads are usually acceptable as long as the service is reliable.

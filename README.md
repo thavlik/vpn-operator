@@ -21,23 +21,23 @@ cat <<EOF | echo "$(</dev/stdin)" > values.yaml
 # In this example, we're exposing Prometheus metrics
 # for the controllers and enabling PodMonitor creation.
 # This is what you would want to do if your cluster
-# uses kube-prometheus:
+# uses kube-prometheus, a project I highly recommend:
 # https://github.com/prometheus-operator/kube-prometheus
 prometheus:
   expose: true
   podMonitors: true
 EOF
 
-# Install the chart into the `vpn` namespace.
-# Refer to chart/values.yaml for details on how to
-# configure installation.
+# Install the chart into the `vpn` namespace. Refer to
+# chart/values.yaml (or the section below) for details
+# on how to configure chart installation.
 RELEASE_NAME=vpn
 CHART_PATH=chart/
 helm install \
-  --namespace=vpn \
-  --create-namespace \
   $RELEASE_NAME \
   $CHART_PATH \
+  --namespace=vpn \
+  --create-namespace \
   -f values.yaml
 ```
 

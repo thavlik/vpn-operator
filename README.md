@@ -58,7 +58,7 @@ spec:
     VPN_SERVICE_PROVIDER: nordvpn
     OPENVPN_USER: myuser@mydomain.com
     OPENVPN_PASSWORD: examplePassword12345
-    SERVER_REGIONS: Netherlands
+    SERVER_REGIONS: Netherlands # optional
 ---
 apiVersion: vpn.beebs.dev/v1
 kind: Provider
@@ -73,11 +73,14 @@ spec:
   maxSlots: 6
 
   # You can optionally specify tag(s) so that Masks have the ability
-  # to select this service at the exclusion of others. Multiple tags
-  # can be specified by separating them with commas. This Provider will
-  # match either tag "default" or "my-vpn".
+  # to select this service at the exclusion of others. This Provider
+  # will match the tags "default", "preferred", and "my-vpn", which
+  # in effect establishes a set of use cases for this Provider.
+  # These values can be anything. This field is necessary because a
+  # Mask and its desired Provider(s) can be in different namespaces.
   tags:
     - default
+    - preferred
     - my-vpn
 
   # Corresponds to the above Secret's metadata.name
@@ -220,16 +223,8 @@ controllers:
 ```
 
 ## Notes
-### Mask Phase
-These are the enum values for the `Mask` resource's `status.phase` field, which represents an overview of its current state:
-- **`Pending`**: The resource first appeared to the controller.
-- **`Waiting`**: The resource is waiting for a slot with a `Provider` to become available.
-- **`Ready`**: The resource's VPN service credentials are ready to be used. 
-- **`Active`**: The resource's VPN service credentials are in use by a `Pod`.
-- **`ErrNoProviders`**: No suitable `Provider` resources were found.
-
 ### Provider Phase
-The `Provider` resource also has enum values for its `status.phase`:
+These are the enum values for the `Provider` resource's `status.phase` field, which summarizes its current state:
 - **`Pending`**: The resource first appeared to the controller.
 - **`Verifying`**: The credentials are being verified with a [gluetun](https://github.com/qdm12/gluetun) pod.
 - **`Verified`**: Verification is complete. The `Provider` will become `Ready` or `Active` upon the next reconciliation.
@@ -238,20 +233,25 @@ The `Provider` resource also has enum values for its `status.phase`:
 - **`ErrVerifyFailed`**: The credentials verification process failed.
 - **`ErrSecretNotFound`**: The `Secret` resource referenced by `spec.secret` is missing.
 
+### Mask Phase
+These are the enum values for the `Mask` resource's `status.phase` field, which summarizes its current state:
+- **`Pending`**: The resource first appeared to the controller.
+- **`Waiting`**: The resource is waiting for a slot with a `Provider` to become available.
+- **`Ready`**: The resource's VPN service credentials are ready to be used. 
+- **`Active`**: The resource's VPN service credentials are in use by a `Pod`.
+- **`ErrNoProviders`**: No suitable `Provider` resources were found.
+
 ### Status message
-In addition `phase`, the status objects of the `Mask` and `Provider` custom resources have a `message` field that is a more verbose description of why the resource is in the current phase. For example, you can view the status object of a `Mask` with `kubectl`:
+In addition to `phase`, the status objects of the `Mask` and `Provider` custom resources have a `message` field that is a more verbose description of why the resource is in the current phase. For example, you can view the status object of a `Mask` with `kubectl`:
 ```bash
 kubectl get mask your-mask-name -o jsonpath='{.status}'
 ```
-This information is useful for debugging and should be propogated to the status of any custom resource that owns a `Mask`.
+This information is useful for debugging and should be propogated to the status of any custom resource that depends on a `Mask`.
 
 ### Ownership model
-Any `Pod` that uses a `Mask` should have a reference to in within [`metadata.ownerReferences`](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) with `blockOwnerDeletion=true`. This way, the deletion of the `Mask` will be blocked until the `Pod` is deleted, and the `Pod` will automatically be garbage collected when its `Mask` is deleted. The controller also uses this relationship to determine whether a `Mask` is in the `Ready` (not in use) or the `Active` (in use) phase.
+Any `Pod` that uses a `Mask` should have a reference to it in [`metadata.ownerReferences`](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) with `blockOwnerDeletion=true`. This way, the deletion of the `Mask` will be blocked until the `Pod` is deleted, and the `Pod` will automatically be garbage collected when its `Mask` is deleted. The controller also uses this relationship to determine whether a `Mask` is in the `Ready` (not in use) or the `Active` (in use) phase.
 
-Your `Mask` should have an owner reference to your custom resource, and your `Pod` should have owner references to both your `Mask` and the aforementioned custom resource. Your custom resource should be the only owner reference anywhere with `controller=true`, as your controller is responsible for reconciling your child `Mask` and `Pod` resources. The owner references with `controller=false` exist strictly for garbage collection purposes and, as described above, to determine if the `Mask` is `Ready` or `Active`.
-
-### Waiting phase
-If no slots are available, the phase of the `Mask` will be `Waiting`. If you are writing a controller that creates `Mask`s for your custom resources, you may consider adding an equivalent `Waiting` phase to your custom resource to show it's waiting on a VPN slot to become available.
+Your `Mask` should have an owner reference to your custom resource, and your `Pod` should have owner references to both your `Mask` and the aforementioned custom resource. Your custom resource should be the only owner reference you create with `controller=true`, as your controller is responsible for reconciling your child `Mask` and `Pod` resources. The owner references with `controller=false` exist strictly for garbage collection purposes and, as described above, to determine if the `Mask` is `Ready` or `Active`.
 
 ### Garbage collection
 Your application is responsible for monitoring the status of your `Mask` and killing the pod if the provider is changed or unassigned. Failing to do so may result in creating more connections than afforded by a `Provider`'s `spec.maxSlots`.

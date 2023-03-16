@@ -86,15 +86,15 @@ pub struct ProviderVerifySpec {
 )]
 pub struct ProviderSpec {
     /// Maximum number of clients allowed to connect to the VPN
-    /// with these credentials at any one time.
+    /// service with these credentials at any one time.
     #[serde(rename = "maxSlots")]
     pub max_slots: usize,
 
     /// Optional list of short names that Masks can use to refer
     /// to this service at the exclusion of others. Example values
-    /// might be the service name ("nordvpn", "pia", etc.) or even
-    /// region names ("us-west", "uk-london", etc.) Whatever makes
-    /// sense in your context.
+    /// might be the role of the service ("default" or "preferred"),
+    /// the service name ("nordvpn", "pia"), or even region names
+    /// ("us-west", "uk-london") - whatever makes sense for you.
     pub tags: Option<Vec<String>>,
 
     /// Optional list of namespaces that are allowed to use

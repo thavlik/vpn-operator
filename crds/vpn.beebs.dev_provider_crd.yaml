@@ -31,7 +31,7 @@ spec:
             description: Provider is a resource that represents a VPN service provider. It contains a reference to a Secret containing the  credentials to connect to the VPN service, and a maximum number of clients that can connect to the VPN at any one time.
             properties:
               maxSlots:
-                description: Maximum number of clients allowed to connect to the VPN with these credentials at any one time.
+                description: Maximum number of clients allowed to connect to the VPN service with these credentials at any one time.
                 format: uint
                 minimum: 0.0
                 type: integer
@@ -45,7 +45,7 @@ spec:
                 description: Reference to a Secret resource containing the env vars that will be injected into the gluetun container.
                 type: string
               tags:
-                description: Optional list of short names that Masks can use to refer to this service at the exclusion of others. Example values might be the service name ("nordvpn", "pia", etc.) or even region names ("us-west", "uk-london", etc.) Whatever makes sense in your context.
+                description: Optional list of short names that Masks can use to refer to this service at the exclusion of others. Example values might be the role of the service ("default" or "preferred"), the service name ("nordvpn", "pia"), or even region names ("us-west", "uk-london") - whatever makes sense for you.
                 items:
                   type: string
                 nullable: true

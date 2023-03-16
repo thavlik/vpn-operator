@@ -162,6 +162,7 @@ metadata:
 spec:
   # You can optionally require the Mask be assigned Providers with
   # specific tags. These value correspond to a Provider's spec.tags
+  # and only one of them has to match.
   #providers: ["my-vpn"]
 ```
 

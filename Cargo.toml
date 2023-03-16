@@ -1,5 +1,2 @@
 [workspace]
-members = [
-    "types",
-    "operator",
-]
+members = ["types", "operator"]

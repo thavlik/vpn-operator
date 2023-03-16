@@ -36,10 +36,8 @@ parse_duration = "2.1.1"
 [build-dependencies]
 serde_yaml = "0.9"
 vpn-types = { path = "../types" }
-kube = { version = "0.78.0", default-features = true, features = [
-    "derive",
-] }
+kube = { version = "0.78.0", default-features = true, features = ["derive"] }
 
 [features]
-default = ["metrics"] # Enable metrics by default
+default = ["metrics"]        # Enable metrics by default
 metrics = ["dep:prometheus"] # metrics feature requires prometheus crate

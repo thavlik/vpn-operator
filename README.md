@@ -94,9 +94,9 @@ spec:
   # Note: all of these fields are optional.
   verify:
     # Set to true to bypass credentials verification. This will allow
-    # the structure of the Secret to by anything you want, but the
+    # the structure of the Secret to be anything you want, and the
     # Provider will immediately enter the Ready phase without truly
-    # knowing if the credentials are ready to use.
+    # knowing if the credentials are valid.
     skip: false
 
     # Amount of time that can elapse before verification is failed.

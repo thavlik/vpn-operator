@@ -22,7 +22,7 @@ kindest build -v
 The Rust types [are in a sister crate](../types). Building this crate will generate the Custom Resource Definition yaml in the [crds/ directory at the root of the repository](../crds).
 
 ## Testing
-Tests can run locally or in a pod with admin privileges. To run the end-to-end tests:
+Tests can run locally or in a pod with admin privileges. To run the end-to-end tests in the default kubectl context:
 ```bash
 cargo test
 ```

@@ -17,13 +17,15 @@ kubectl apply -f crds/
 ```
 3. Install the vpn-operator [Helm chart](https://helm.sh/):
 ```bash
-# Create your chart configuration file.
+# Create your chart configuration file. Generally,
+# you will want to place your values.yaml in a separate
+# repository, but for this simple example we're putting
+# it at the root.
 cat <<EOF | echo "$(</dev/stdin)" > values.yaml
-# In this example, we're exposing Prometheus metrics
-# for the controllers and enabling PodMonitor creation.
-# This is what you would want to do if your cluster
-# uses kube-prometheus, a project I highly recommend:
-# https://github.com/prometheus-operator/kube-prometheus
+# Enable Prometheus metrics for the controllers and
+# enable PodMonitor creation. This is what you would
+# want to do if your cluster uses kube-prometheus,
+# a project I highly recommend: https://github.com/prometheus-operator/kube-prometheus
 prometheus:
   expose: true
   podMonitors: true
@@ -31,7 +33,7 @@ EOF
 
 # Install the chart into the `vpn` namespace. Refer to
 # chart/values.yaml (or the section below) for details
-# on how to configure chart installation.
+# on how to configure chart installation. 
 RELEASE_NAME=vpn
 CHART_PATH=chart/
 helm install \

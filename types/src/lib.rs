@@ -16,9 +16,10 @@ pub struct MaskProviderVerifyContainerOverridesSpec {
     #[schemars(schema_with = "any_schema")]
     pub init: Option<Value>,
 
-    /// Customization for the gluetun container that connects to the VPN.
-    /// The structure of this field corresponds to the [`Container`](k8s_openapi::api::core::v1::Container)
-    /// schema. Validation is disabled for both peformance and simplicity.
+    /// Customization for the [gluetun](https://github.com/qdm12/gluetun) container
+    /// that connects to the VPN. The structure of this field corresponds to the
+    /// [`Container`](k8s_openapi::api::core::v1::Container) schema. Validation
+    /// is disabled for both peformance and simplicity.
     #[schemars(schema_with = "any_schema")]
     pub vpn: Option<Value>,
 
@@ -105,7 +106,7 @@ pub struct MaskProviderVerifySpec {
 pub struct MaskProviderSpec {
     /// Reference to a [`Secret`](k8s_openapi::api::core::v1::Secret)
     /// resource containing the env vars that will be injected into
-    /// the gluetun container.
+    /// the [gluetun](https://github.com/qdm12/gluetun) container.
     pub secret: String,
 
     /// Maximum number of [`Mask`] resources that can be assigned this
@@ -116,8 +117,11 @@ pub struct MaskProviderSpec {
     pub max_slots: usize,
 
     /// Optional list of short names that [`Mask`] resources can use to
-    /// refer to this [`MaskProvider`] at the exclusion of others. Example
-    /// values might be the role of the service (`"default"` or `"preferred"`),
+    /// refer to this [`MaskProvider`] at the exclusion of others.
+    /// Only one of these has to match one entry in [`MaskSpec::providers`]
+    /// for this [`MaskProvider`] to be considered suitable for the [`Mask`].
+    /// 
+    /// Example values might be the role of the service (`"default"` or `"preferred"`),
     /// the service name (`"nordvpn"`, `"atlasvpn"`), or even region names
     /// (`"us-west"`, `"uk-london"`) - whatever makes sense for you.
     pub tags: Option<Vec<String>>,
@@ -126,8 +130,8 @@ pub struct MaskProviderSpec {
     /// this [`MaskProvider`]. If unset, all namespaces are allowed.
     pub namespaces: Option<Vec<String>>,
 
-    /// VPN service verification options, used to ensure the
-    /// credentials are valid before allowing [`Mask`]s to use them.
+    /// VPN service verification options. Used to ensure the credentials
+    /// are valid before assigning the [`MaskProvider`] to [`Mask`] resources.
     pub verify: Option<MaskProviderVerifySpec>,
 }
 
@@ -157,14 +161,14 @@ pub struct MaskProviderStatus {
 /// A short description of the [`MaskProvider`] resource's current state.
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, JsonSchema)]
 pub enum MaskProviderPhase {
-    /// The resource first appeared to the controller.
+    /// The [`MaskProvider`] resource first appeared to the controller.
     Pending,
 
-    /// The credentials are being verified with a gluetun pod.
+    /// The credentials are being verified with [gluetun](https://github.com/qdm12/gluetun).
     Verifying,
 
     /// Verification is complete. The [`MaskProviderStatus::phase`] will become
-    /// [`MaskProviderPhase::Ready`] or [`MaskProviderPhase::Active`] upon the
+    /// [`Ready`](MaskProviderPhase::Ready) or [`Active`](MaskProviderPhase::Active)
     /// next reconciliation.
     Verified,
 
@@ -289,31 +293,31 @@ pub struct AssignedProvider {
     pub slot: usize,
 
     /// Name of the [`Secret`](k8s_openapi::api::core::v1::Secret) resource
-    /// which contains environment variables to be injected into the gluetun
-    /// container. The controller will create this in the same namespace as
-    /// the [`Mask`] resource. Its contents mirror that of the
-    /// [`Secret`](k8s_openapi::api::core::v1::Secret) referenced
-    /// by [`MaskProviderSpec::secret`].
+    /// which contains environment variables to be injected into a
+    /// [gluetun](https://github.com/qdm12/gluetun) container. The controller
+    /// will create this in the same namespace as the [`Mask`] resource.
+    /// Its contents mirror that of the [`Secret`](k8s_openapi::api::core::v1::Secret)
+    /// referenced by [`MaskProviderSpec::secret`].
     pub secret: String,
 }
 
 /// A short description of the [`Mask`] resource's current state.
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, JsonSchema)]
 pub enum MaskPhase {
-    /// The resource first appeared to the controller.
+    /// The [`Mask`] resource first appeared to the controller.
     Pending,
 
-    /// The resource is waiting for a slot with a [`MaskProvider`] to become available.
+    /// The [`Mask`] is waiting for an open slot with a suitable [`MaskProvider`].
     Waiting,
-
-    /// No suitable [`MaskProvider`] resources were found.
-    ErrNoProviders,
 
     /// The resource's VPN service credentials are ready to be used.
     Ready,
 
     /// The resource's VPN service credentials are in use by a Pod.
     Active,
+
+    /// No suitable [`MaskProvider`] resources were found.
+    ErrNoProviders,
 }
 
 impl FromStr for MaskPhase {

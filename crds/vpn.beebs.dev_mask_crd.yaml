@@ -67,7 +67,7 @@ spec:
                     description: Namespace of the assigned [`MaskProvider`] resource.
                     type: string
                   secret:
-                    description: Name of the [`Secret`](k8s_openapi::api::core::v1::Secret) resource which contains environment variables to be injected into the gluetun container. The controller will create this in the same namespace as the [`Mask`] resource. Its contents mirror that of the [`Secret`](k8s_openapi::api::core::v1::Secret) referenced by [`MaskProviderSpec::secret`].
+                    description: Name of the [`Secret`](k8s_openapi::api::core::v1::Secret) resource which contains environment variables to be injected into a [gluetun](https://github.com/qdm12/gluetun) container. The controller will create this in the same namespace as the [`Mask`] resource. Its contents mirror that of the [`Secret`](k8s_openapi::api::core::v1::Secret) referenced by [`MaskProviderSpec::secret`].
                     type: string
                   slot:
                     description: Slot index assigned to this [`Mask`]. This value must be less than [`MaskProviderSpec::max_slots`], and is used to index the [`ConfigMap`](k8s_openapi::api::core::v1::ConfigMap) that reserves the slot.

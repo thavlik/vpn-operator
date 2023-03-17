@@ -279,6 +279,11 @@ For full removal of vpn-operator from your cluster:
 # Remove the chart release first.
 helm delete -n vpn vpn
 
+# (Optional) delete the namespace. Assuming you have
+# nothing valuable, you can skip `helm delete` and
+# begin here, as this will also remove the chart.
+kubectl delete namespace vpn
+
 # Delete the Custom Resource Definitions.
 kubectl delete crd maskproviders.vpn.beebs.dev
 kubectl delete crd masks.vpn.beebs.dev

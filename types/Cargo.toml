@@ -1,7 +1,7 @@
 [package]
 name = "vpn-types"
 version = "0.1.0"
-description = "Kubernetes Custom Resource Definitions for vpn-operator"
+description = "Kubernetes Custom Resource types for vpn-operator"
 homepage = "https://vpn.beebs.dev/"
 repository = "https://github.com/thavlik/vpn-operator/"
 authors = ["Tom Havlik <thavlik@protonmail.com>"]

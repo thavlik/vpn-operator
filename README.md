@@ -17,8 +17,8 @@ kubectl apply -f crds/
 ```
 3. Install the vpn-operator [Helm chart](https://helm.sh/):
 ```bash
-# Create your chart configuration file. Generally,
-# you will want to place your values.yaml in a separate
+# Create your chart configuration file. Generally, you
+# will want to place your values.yaml in a separate
 # repository, but for this simple example we're putting
 # it at the root.
 cat <<EOF | echo "$(</dev/stdin)" > values.yaml

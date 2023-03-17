@@ -22,7 +22,7 @@ kubectl apply -f crds/
 # repository, but for this simple example we're putting
 # it at the root.
 cat <<EOF | echo "$(</dev/stdin)" > values.yaml
-# Enable Prometheus metrics for the controllers and
+# Expose Prometheus metrics for the controllers and
 # enable PodMonitor creation. This is what you would
 # want to do if your cluster uses kube-prometheus,
 # a project I highly recommend: https://github.com/prometheus-operator/kube-prometheus

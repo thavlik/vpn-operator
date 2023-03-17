@@ -28,7 +28,7 @@ spec:
         description: Auto-generated derived type for MaskProviderSpec via `CustomResource`
         properties:
           spec:
-            description: '[`MaskProviderSpec`] is the configuration for the [`MaskProvider`] resource, which represents a VPN service provider. It contains a reference to a [`Secret`](k8s_openapi::api::core::v1::Secret) containing the credentials for connecting to the VPN service, as well as other important details like the maximum number of clients that can connect with these credentials at the same time.'
+            description: '[`MaskProviderSpec`] is the configuration for the [`MaskProvider`] resource, which represents a VPN service provider. It specifies a reference to a [`Secret`](k8s_openapi::api::core::v1::Secret) containing the credentials for connecting to the VPN service, as well as other important details like the maximum number of clients that can connect with the credentials at the same time.'
             properties:
               maxSlots:
                 description: Maximum number of [`Mask`] resources that can be assigned this [`MaskProvider`] at any given time. Used to prevent excessive connections to the VPN service, which could result in account suspension with some providers.
@@ -45,7 +45,7 @@ spec:
                 description: Reference to a [`Secret`](k8s_openapi::api::core::v1::Secret) resource containing the env vars that will be injected into the gluetun container.
                 type: string
               tags:
-                description: Optional list of short names that [`Mask`] resources can use to refer to this service at the exclusion of others. Example values might be the role of the service (`"default"` or `"preferred"`), the service name (`"nordvpn"`, `"pia"`), or even region names (`"us-west"`, `"uk-london"`) - whatever makes sense for you.
+                description: Optional list of short names that [`Mask`] resources can use to refer to this [`MaskProvider`] at the exclusion of others. Example values might be the role of the service (`"default"` or `"preferred"`), the service name (`"nordvpn"`, `"atlasvpn"`), or even region names (`"us-west"`, `"uk-london"`) - whatever makes sense for you.
                 items:
                   type: string
                 nullable: true
@@ -55,11 +55,11 @@ spec:
                 nullable: true
                 properties:
                   interval:
-                    description: How often you want to verify the credentials (e.g. "1h30m") If unset, the credentials are only verified once.
+                    description: How often you want to verify the credentials (e.g. `"24h"`). If unset, the credentials are only verified once (unless [`skip=true`](MaskProviderVerifySpec::skip), then they are never verified).
                     nullable: true
                     type: string
                   overrides:
-                    description: Optional customization for the verification [`Pod`](k8s_openapi::api::core::v1::Pod). Use this to setup the image, networking, etc. These values are then merged onto the controller-created [`Pod`](k8s_openapi::api::core::v1::Pod).
+                    description: Optional customization for the verification [`Pod`](k8s_openapi::api::core::v1::Pod). Use this to setup the image, networking, etc. These values are merged onto the controller-created [`Pod`](k8s_openapi::api::core::v1::Pod).
                     nullable: true
                     properties:
                       containers:
@@ -91,11 +91,11 @@ spec:
                     - pod
                     type: object
                   skip:
-                    description: If true, credentials verification is skipped entirely.
+                    description: If `true`, credentials verification is skipped entirely. This is useful if your [`MaskProviderSpec::secret`] can't be plugged into a gluetun container, but you still want to use vpn-operator. Defaults to `false`.
                     nullable: true
                     type: boolean
                   timeout:
-                    description: '[`Duration`](std::time::Duration) string for how long the verify pod is allowed to take before verification is considered failed.'
+                    description: Duration string for how long the verify pod is allowed to take before verification is considered failed. The controller doesn't inspect the gluetun logs, so the only way to know if verification has failed is if containers exit with nonzero codes or if this timeout has passed. In testing, the latter is more common. This value must be at least as long as your VPN service could possibly take to connect (e.g. `"60s"`).
                     nullable: true
                     type: string
                 type: object

@@ -28,7 +28,7 @@ spec:
             description: '[`MaskSpec`] describes the configuration for a [`Mask`] resource, which is the mechanism for reserving slots with [`MaskProvider`] resources. Once a [`Mask`] is assigned a suitable provider, the controller copies the provider''s credentials to a [`Secret`](k8s_openapi::api::core::v1::Secret) owned by the [`Mask`] and references it as [`AssignedProvider::secret`] within [`MaskStatus::provider`].'
             properties:
               providers:
-                description: Optional list of providers to use at the exclusion of others. Omit if you are okay with being assigned any [`MaskProvider`]. These values correspond to [`MaskProviderSpec::tags`].
+                description: Optional list of providers to use at the exclusion of others. Omit if you are okay with being assigned any [`MaskProvider`]. These values correspond to [`MaskProviderSpec::tags`], and only one of them has to match for the [`MaskProvider`] to be considered suitable.
                 items:
                   type: string
                 nullable: true
@@ -39,7 +39,7 @@ spec:
             nullable: true
             properties:
               lastUpdated:
-                description: Timestamp of when the [`MaskStatus`] was last updated.
+                description: Timestamp of when the [`MaskStatus`] object was last updated.
                 nullable: true
                 type: string
               message:

@@ -7,10 +7,10 @@ use std::{fmt, str::FromStr};
 /// Defines overrides for the different containers in the verification pod.
 /// The structure of these fields corresponds to the [`Container`](k8s_openapi::api::core::v1::Container)
 /// schema. Validation is disabled for both peformance and simplicity, as [`k8s_openapi`]
-/// doesn't currently implement JsonSchema.
+/// doesn't currently implement [`schemars::JsonSchema`].
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
 pub struct MaskProviderVerifyContainerOverridesSpec {
-    /// Customization for the init container that gets the initial IP address.
+    /// Customization for the init container that probes the initial IP address.
     /// The structure of this field corresponds to the [`Container`](k8s_openapi::api::core::v1::Container)
     /// schema. Validation is disabled for both peformance and simplicity.
     #[schemars(schema_with = "any_schema")]
@@ -22,7 +22,7 @@ pub struct MaskProviderVerifyContainerOverridesSpec {
     #[schemars(schema_with = "any_schema")]
     pub vpn: Option<Value>,
 
-    /// Customization for the container that checks the public IP address
+    /// Customization for the container that probes the public IP address
     /// until it differs from the initial.
     /// The structure of this field corresponds to the [`Container`](k8s_openapi::api::core::v1::Container)
     /// schema. Validation is disabled for both peformance and simplicity.
@@ -30,6 +30,7 @@ pub struct MaskProviderVerifyContainerOverridesSpec {
     pub probe: Option<Value>,
 }
 
+/// Defines various overrides for the verification [`Pod`](k8s_openapi::api::core::v1::Pod).
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
 pub struct MaskProviderVerifyOverridesSpec {
     /// Optional customization for the verification [`Pod`](k8s_openapi::api::core::v1::Pod)'s
@@ -52,19 +53,26 @@ pub struct MaskProviderVerifyOverridesSpec {
 /// to a [`Mask`].
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
 pub struct MaskProviderVerifySpec {
-    /// If true, credentials verification is skipped entirely.
+    /// If `true`, credentials verification is skipped entirely. This is useful
+    /// if your [`MaskProviderSpec::secret`] can't be plugged into a gluetun
+    /// container, but you still want to use vpn-operator. Defaults to `false`.
     pub skip: Option<bool>,
 
-    /// [`Duration`](std::time::Duration) string for how long the verify
-    /// pod is allowed to take before verification is considered failed.
+    /// Duration string for how long the verify pod is allowed to take before
+    /// verification is considered failed. The controller doesn't inspect
+    /// the gluetun logs, so the only way to know if verification has failed
+    /// is if containers exit with nonzero codes or if this timeout has passed.
+    /// In testing, the latter is more common. This value must be at least as
+    /// long as your VPN service could possibly take to connect (e.g. `"60s"`).
     pub timeout: Option<String>,
 
-    /// How often you want to verify the credentials (e.g. "1h30m")
-    /// If unset, the credentials are only verified once.
+    /// How often you want to verify the credentials (e.g. `"24h"`). If unset,
+    /// the credentials are only verified once (unless [`skip=true`](MaskProviderVerifySpec::skip),
+    /// then they are never verified).
     pub interval: Option<String>,
 
     /// Optional customization for the verification [`Pod`](k8s_openapi::api::core::v1::Pod).
-    /// Use this to setup the image, networking, etc. These values are then
+    /// Use this to setup the image, networking, etc. These values are
     /// merged onto the controller-created [`Pod`](k8s_openapi::api::core::v1::Pod).
     pub overrides: Option<MaskProviderVerifyOverridesSpec>,
 }
@@ -108,9 +116,9 @@ pub struct MaskProviderSpec {
     pub max_slots: usize,
 
     /// Optional list of short names that [`Mask`] resources can use to
-    /// refer to this service at the exclusion of others. Example values
-    /// might be the role of the service (`"default"` or `"preferred"`),
-    /// the service name (`"nordvpn"`, `"pia"`), or even region names
+    /// refer to this [`MaskProvider`] at the exclusion of others. Example
+    /// values might be the role of the service (`"default"` or `"preferred"`),
+    /// the service name (`"nordvpn"`, `"atlasvpn"`), or even region names
     /// (`"us-west"`, `"uk-london"`) - whatever makes sense for you.
     pub tags: Option<Vec<String>>,
 

@@ -120,7 +120,7 @@ pub struct MaskProviderSpec {
     /// refer to this [`MaskProvider`] at the exclusion of others.
     /// Only one of these has to match one entry in [`MaskSpec::providers`]
     /// for this [`MaskProvider`] to be considered suitable for the [`Mask`].
-    /// 
+    ///
     /// Example values might be the role of the service (`"default"` or `"preferred"`),
     /// the service name (`"nordvpn"`, `"atlasvpn"`), or even region names
     /// (`"us-west"`, `"uk-london"`) - whatever makes sense for you.

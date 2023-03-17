@@ -147,11 +147,11 @@ spec:
 
 2. Make sure the `MaskProvider` enters the `Ready` phase:
 ```bash
-kubectl get provider -Aw
+kubectl get maskprovider -Aw
 ```
 If there is an error verifying the credentials, the phase of the `MaskProvider` will be `ErrVerifyFailed` and you can view the error details by looking at its `status.message` field:
 ```bash
-kubectl get provider -A -o yaml
+kubectl get maskprovider -A -o yaml
 ```
 
 3. Create `Mask` resources to reserve slots with the `MaskProvider`:

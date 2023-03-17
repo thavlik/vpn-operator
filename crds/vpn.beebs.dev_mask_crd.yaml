@@ -51,9 +51,9 @@ spec:
                 enum:
                 - Pending
                 - Waiting
-                - ErrNoProviders
                 - Ready
                 - Active
+                - ErrNoProviders
                 nullable: true
                 type: string
               provider:

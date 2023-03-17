@@ -269,10 +269,9 @@ pub struct MaskStatus {
 
 /// Details about the [`MaskProvider`] assigned to this [`Mask`].
 /// If this object is not present, you should ensure that any
-/// [`Pod`](k8s_openapi::api::core::v1::Pod) that was consuming
-/// this [`Mask`] is terminated. Failure to do so may result in
-/// more connections to the VPN service than allowed by
-/// [`MaskProviderSpec::max_slots`].
+/// [`Pod`](k8s_openapi::api::core::v1::Pod) that was consuming this
+/// [`Mask`] is deleted. Failure to do so may result in more connections
+/// to the VPN service than allowed by [`MaskProviderSpec::max_slots`].
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
 pub struct AssignedProvider {
     /// Name of the assigned [`MaskProvider`] resource.

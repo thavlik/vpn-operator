@@ -168,7 +168,11 @@ pub async fn ready(client: Client, instance: &MaskProvider) -> Result<(), Error>
 
 /// Updates the MaskProvider's phase to Active, which indicates
 /// the VPN provider is in use by one or more pods.
-pub async fn active(client: Client, instance: &MaskProvider, active_slots: usize) -> Result<(), Error> {
+pub async fn active(
+    client: Client,
+    instance: &MaskProvider,
+    active_slots: usize,
+) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.message = Some(format!("VPN service is in use by {} Masks.", active_slots));
         status.phase = Some(MaskProviderPhase::Active);

@@ -391,7 +391,10 @@ fn mask_uses_reservation(instance: &Mask, provider: &MaskProvider, slot: usize) 
 }
 
 /// Returns a list of inactive slot numbers for the MaskProvider.
-pub async fn list_inactive_slots(client: Client, provider: &MaskProvider) -> Result<Vec<usize>, Error> {
+pub async fn list_inactive_slots(
+    client: Client,
+    provider: &MaskProvider,
+) -> Result<Vec<usize>, Error> {
     let active_slots = list_active_slots(client, provider).await?;
     Ok((0..provider.spec.max_slots)
         .filter(|slot| !active_slots.contains(slot))
@@ -399,7 +402,10 @@ pub async fn list_inactive_slots(client: Client, provider: &MaskProvider) -> Res
 }
 
 /// Returns a list of active slot numbers for the MaskProvider.
-pub async fn list_active_slots(client: Client, provider: &MaskProvider) -> Result<Vec<usize>, Error> {
+pub async fn list_active_slots(
+    client: Client,
+    provider: &MaskProvider,
+) -> Result<Vec<usize>, Error> {
     let provider_uid = provider.metadata.uid.as_deref().unwrap();
     let cm_api: Api<ConfigMap> = Api::namespaced(
         client.clone(),

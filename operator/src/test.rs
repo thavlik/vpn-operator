@@ -46,7 +46,10 @@ async fn get_actual_provider_secret(client: Client) -> Result<Option<Secret>, Er
 /// If the environment specified a real secret, it will be used.
 /// This will also enable verification. Otherwise, mock credentials
 /// will be used and verificationwill be disabled.
-async fn get_test_provider_secret(client: Client, provider: &MaskProvider) -> Result<Secret, Error> {
+async fn get_test_provider_secret(
+    client: Client,
+    provider: &MaskProvider,
+) -> Result<Secret, Error> {
     // Use the default test credentials, which bypass verification.
     let env_secret = get_actual_provider_secret(client).await?;
     Ok(Secret {
@@ -91,7 +94,11 @@ async fn get_test_provider_secret(client: Client, provider: &MaskProvider) -> Re
 
 /// Returns the test MaskProvider resource. If we are using mock credentials,
 /// verification will be disabled. Otherwise, verification will be enabled.
-async fn get_test_provider(client: Client, name: &str, namespace: &str) -> Result<MaskProvider, Error> {
+async fn get_test_provider(
+    client: Client,
+    name: &str,
+    namespace: &str,
+) -> Result<MaskProvider, Error> {
     Ok(MaskProvider {
         metadata: ObjectMeta {
             name: Some(name.to_owned()),

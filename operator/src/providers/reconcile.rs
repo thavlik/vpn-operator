@@ -116,7 +116,10 @@ enum MaskProviderAction {
 }
 
 /// Reconciliation function for the `MaskProvider` resource.
-async fn reconcile(instance: Arc<MaskProvider>, context: Arc<ContextData>) -> Result<Action, Error> {
+async fn reconcile(
+    instance: Arc<MaskProvider>,
+    context: Arc<ContextData>,
+) -> Result<Action, Error> {
     // The `Client` is shared -> a clone from the reference is obtained
     let client: Client = context.client.clone();
 
@@ -405,7 +408,9 @@ async fn determine_action(
     {
         // The resource specifies using a Secret that doesn't exist.
         // This is the only error state for the MaskProvider resource.
-        return Ok(MaskProviderAction::SecretNotFound(instance.spec.secret.clone()));
+        return Ok(MaskProviderAction::SecretNotFound(
+            instance.spec.secret.clone(),
+        ));
     }
 
     // Check if the MaskProvider requires verification.
@@ -485,7 +490,9 @@ fn determine_verify_mask_action(mask: Mask) -> Result<MaskProviderAction, Error>
         // The Mask is ready to be used in the verification Pod.
         // It should never be Active here, but if it, we know the
         // Pod doesn't exist and we shouldn't be exceeding maxSlots.
-        Some(MaskPhase::Ready) | Some(MaskPhase::Active) => MaskProviderAction::CreateVerifyPod(mask),
+        Some(MaskPhase::Ready) | Some(MaskPhase::Active) => {
+            MaskProviderAction::CreateVerifyPod(mask)
+        }
         // The MaskProvider has too many active slots, we will have to wait.
         Some(MaskPhase::Waiting) => MaskProviderAction::Verifying {
             start_time: None,
@@ -499,7 +506,10 @@ fn determine_verify_mask_action(mask: Mask) -> Result<MaskProviderAction, Error>
 }
 
 /// Determines the action given that the verification Pod is present.
-fn determine_verify_pod_action(instance: &MaskProvider, pod: &Pod) -> Result<MaskProviderAction, Error> {
+fn determine_verify_pod_action(
+    instance: &MaskProvider,
+    pod: &Pod,
+) -> Result<MaskProviderAction, Error> {
     // Examine the status object of the pod.
     let status = pod
         .status
@@ -533,7 +543,9 @@ fn determine_verify_pod_action(instance: &MaskProvider, pod: &Pod) -> Result<Mas
         // Kubernetes docs, but it doesn't seem to be the case.
         "Succeeded" => MaskProviderAction::Verified,
         // Unknown error.
-        _ => MaskProviderAction::VerifyFailed("Unknown error occurred during verification.".to_owned()),
+        _ => MaskProviderAction::VerifyFailed(
+            "Unknown error occurred during verification.".to_owned(),
+        ),
     })
 }
 

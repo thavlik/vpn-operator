@@ -273,8 +273,8 @@ kubectl get crd maskproviders.vpn.beebs.dev -o yaml
 kubectl get crd masks.vpn.beebs.dev -o yaml
 ```
 
-### Uninstallation / removal
-To fully remove vpn-operator from your cluster:
+### Uninstallation
+For full removal of vpn-operator from your cluster:
 ```bash
 # Remove the chart release first.
 helm delete -n vpn vpn

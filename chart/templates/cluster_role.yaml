@@ -18,8 +18,8 @@ rules:
       - watch
   - apiGroups: ["vpn.beebs.dev"]
     resources:
-      - providers
-      - providers/status
+      - maskproviders
+      - maskproviders/status
       - masks
       - masks/status
     verbs:

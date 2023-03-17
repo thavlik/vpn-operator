@@ -4,17 +4,17 @@ use kube::{Api, Client, Error};
 use serde_json::{json, Value};
 use vpn_types::*;
 
-/// Adds a finalizer record into an `Provider` kind of resource. If the finalizer already exists,
+/// Adds a finalizer record into an `MaskProvider` kind of resource. If the finalizer already exists,
 /// this action has no effect.
 ///
 /// # Arguments:
-/// - `client` - Kubernetes client to modify the `Provider` resource with.
-/// - `name` - Name of the `Provider` resource to modify. Existence is not verified
-/// - `namespace` - Namespace where the `Provider` resource with given `name` resides.
+/// - `client` - Kubernetes client to modify the `MaskProvider` resource with.
+/// - `name` - Name of the `MaskProvider` resource to modify. Existence is not verified
+/// - `namespace` - Namespace where the `MaskProvider` resource with given `name` resides.
 ///
 /// Note: Does not check for resource's existence for simplicity.
-pub async fn add(client: Client, name: &str, namespace: &str) -> Result<Provider, Error> {
-    let api: Api<Provider> = Api::namespaced(client, namespace);
+pub async fn add(client: Client, name: &str, namespace: &str) -> Result<MaskProvider, Error> {
+    let api: Api<MaskProvider> = Api::namespaced(client, namespace);
     let finalizer: Value = json!({
         "metadata": {
             "finalizers": [FINALIZER_NAME]
@@ -25,17 +25,17 @@ pub async fn add(client: Client, name: &str, namespace: &str) -> Result<Provider
     Ok(api.patch(name, &PatchParams::default(), &patch).await?)
 }
 
-/// Removes all finalizers from an `Provider` resource. If there are no finalizers already, this
+/// Removes all finalizers from an `MaskProvider` resource. If there are no finalizers already, this
 /// action has no effect.
 ///
 /// # Arguments:
-/// - `client` - Kubernetes client to modify the `Provider` resource with.
-/// - `name` - Name of the `Provider` resource to modify. Existence is not verified
-/// - `namespace` - Namespace where the `Provider` resource with given `name` resides.
+/// - `client` - Kubernetes client to modify the `MaskProvider` resource with.
+/// - `name` - Name of the `MaskProvider` resource to modify. Existence is not verified
+/// - `namespace` - Namespace where the `MaskProvider` resource with given `name` resides.
 ///
 /// Note: Does not check for resource's existence for simplicity.
-pub async fn delete(client: Client, name: &str, namespace: &str) -> Result<Provider, Error> {
-    let api: Api<Provider> = Api::namespaced(client, namespace);
+pub async fn delete(client: Client, name: &str, namespace: &str) -> Result<MaskProvider, Error> {
+    let api: Api<MaskProvider> = Api::namespaced(client, namespace);
     let finalizer: Value = json!({
         "metadata": {
             "finalizers": null

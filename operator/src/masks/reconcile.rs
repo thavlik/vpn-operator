@@ -172,7 +172,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
     // This is the write phase of reconciliation.
     let result = match action {
         MaskAction::Pending => {
-            // Update the phase of the `Provider` resource to Pending.
+            // Update the phase of the `MaskProvider` resource to Pending.
             actions::pending(client, &instance).await?;
 
             // Requeue immediately.
@@ -197,7 +197,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             Action::requeue(Duration::ZERO)
         }
         MaskAction::Delete => {
-            // Delete the reservation ConfigMap from the Provider's namespace.
+            // Delete the reservation ConfigMap from the MaskProvider's namespace.
             actions::delete_reservation(client.clone(), &name, &namespace, &instance).await?;
 
             // Delete the credentials secret from the Mask's namespace.
@@ -288,7 +288,7 @@ async fn determine_provider_action(
     instance: &Mask,
     provider: &AssignedProvider,
 ) -> Result<Option<MaskAction>, Error> {
-    // Ensure that the ConfigMap reserving the connection with the Provider exists.
+    // Ensure that the ConfigMap reserving the connection with the MaskProvider exists.
     // If the ConfigMap no longer exists, we need to immediately remove the
     // current provider from the Mask status and assign a new one.
     if !owns_reservation(client.clone(), name, namespace, instance).await? {
@@ -301,7 +301,7 @@ async fn determine_provider_action(
         .await?
         .is_none()
     {
-        // The Mask has reserved a connection with the Provider,
+        // The Mask has reserved a connection with the MaskProvider,
         // but for some reason the secret doesn't exist.
         return Ok(Some(MaskAction::CreateSecret));
     }
@@ -337,9 +337,9 @@ async fn determine_action(
 
     // Get the assigned provider details from the status.
     let provider = match get_assigned_provider(instance) {
-        // Provider has not been assigned yet.
+        // MaskProvider has not been assigned yet.
         None => return Ok(MaskAction::Assign),
-        // Provider has already been assigned.
+        // MaskProvider has already been assigned.
         Some(provider) => provider,
     };
 

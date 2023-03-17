@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::{fmt, str::FromStr};
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
-pub struct ProviderVerifyContainerOverridesSpec {
+pub struct MaskProviderVerifyContainerOverridesSpec {
     /// Customization for the init container that gets the initial IP address.
     /// The structure of this field corresponds to the Container schema.
     /// Validation is disabled for both peformance and simplicity.
@@ -27,11 +27,11 @@ pub struct ProviderVerifyContainerOverridesSpec {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
-pub struct ProviderVerifyOverridesSpec {
+pub struct MaskProviderVerifyOverridesSpec {
     // Optional customization for the verification pod's different containers.
     // Since jsonpatch requires all containers be specified, this is used to
     // configure each container individually.
-    pub containers: Option<ProviderVerifyContainerOverridesSpec>,
+    pub containers: Option<MaskProviderVerifyContainerOverridesSpec>,
 
     // Optional customization for the verification Pod resource:
     // https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#Pod
@@ -42,7 +42,7 @@ pub struct ProviderVerifyOverridesSpec {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
-pub struct ProviderVerifySpec {
+pub struct MaskProviderVerifySpec {
     /// If true, credentials verification is skipped entirely.
     pub skip: Option<bool>,
 
@@ -57,10 +57,10 @@ pub struct ProviderVerifySpec {
     /// Optional customization for the verification pod.
     /// Use this to set the image, networking, etc.
     /// It is merged onto the controller-created Pod.
-    pub overrides: Option<ProviderVerifyOverridesSpec>,
+    pub overrides: Option<MaskProviderVerifyOverridesSpec>,
 }
 
-/// Provider is a resource that represents a VPN service provider.
+/// MaskProvider is a resource that represents a VPN service provider.
 /// It contains a reference to a Secret containing the  credentials
 /// to connect to the VPN service, and a maximum number of clients
 /// that can connect to the VPN at any one time.
@@ -68,10 +68,10 @@ pub struct ProviderVerifySpec {
 #[kube(
     group = "vpn.beebs.dev",
     version = "v1",
-    kind = "Provider",
-    plural = "providers",
+    kind = "MaskProvider",
+    plural = "maskproviders",
     derive = "PartialEq",
-    status = "ProviderStatus",
+    status = "MaskProviderStatus",
     namespaced
 )]
 #[kube(derive = "Default")]
@@ -84,7 +84,11 @@ pub struct ProviderVerifySpec {
 #[kube(
     printcolumn = "{\"jsonPath\": \".status.lastUpdated\", \"name\": \"AGE\", \"type\": \"date\" }"
 )]
-pub struct ProviderSpec {
+pub struct MaskProviderSpec {
+    /// Reference to a Secret resource containing the env vars
+    /// that will be injected into the gluetun container.
+    pub secret: String,
+
     /// Maximum number of clients allowed to connect to the VPN
     /// service with these credentials at any one time.
     #[serde(rename = "maxSlots")]
@@ -98,25 +102,21 @@ pub struct ProviderSpec {
     pub tags: Option<Vec<String>>,
 
     /// Optional list of namespaces that are allowed to use
-    /// this Provider. If unset, all namespaces are allowed.
+    /// this MaskProvider. If unset, all namespaces are allowed.
     pub namespaces: Option<Vec<String>>,
 
     /// VPN service verification options, used to ensure the
     /// credentials are valid before allowing Masks to use them.
-    pub verify: Option<ProviderVerifySpec>,
-
-    /// Reference to a Secret resource containing the env vars
-    /// that will be injected into the gluetun container.
-    pub secret: String,
+    pub verify: Option<MaskProviderVerifySpec>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
-pub struct ProviderStatus {
-    /// A short description of the Provider's current state.
-    pub phase: Option<ProviderPhase>,
+pub struct MaskProviderStatus {
+    /// A short description of the MaskProvider's current state.
+    pub phase: Option<MaskProviderPhase>,
 
     /// A human-readable message indicating details about why the
-    /// Provider is in this phase.
+    /// MaskProvider is in this phase.
     pub message: Option<String>,
 
     /// Timestamp of when the status object was last updated.
@@ -132,16 +132,16 @@ pub struct ProviderStatus {
     pub active_slots: Option<usize>,
 }
 
-/// A short description of the Provider's current state.
+/// A short description of the MaskProvider's current state.
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, JsonSchema)]
-pub enum ProviderPhase {
+pub enum MaskProviderPhase {
     /// The resource first appeared to the controller.
     Pending,
 
     /// The credentials are being verified with a gluetun pod.
     Verifying,
 
-    /// Verification is complete. The Provider will become Ready
+    /// Verification is complete. The MaskProvider will become Ready
     /// or Active upon the next reconciliation.
     Verified,
 
@@ -158,39 +158,39 @@ pub enum ProviderPhase {
     ErrVerifyFailed,
 }
 
-impl FromStr for ProviderPhase {
+impl FromStr for MaskProviderPhase {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "Pending" => Ok(ProviderPhase::Pending),
-            "ErrSecretNotFound" => Ok(ProviderPhase::ErrSecretNotFound),
-            "Verifying" => Ok(ProviderPhase::Verifying),
-            "Verified" => Ok(ProviderPhase::Verified),
-            "ErrVerifyFailed" => Ok(ProviderPhase::ErrVerifyFailed),
-            "Ready" => Ok(ProviderPhase::Ready),
-            "Active" => Ok(ProviderPhase::Active),
+            "Pending" => Ok(MaskProviderPhase::Pending),
+            "ErrSecretNotFound" => Ok(MaskProviderPhase::ErrSecretNotFound),
+            "Verifying" => Ok(MaskProviderPhase::Verifying),
+            "Verified" => Ok(MaskProviderPhase::Verified),
+            "ErrVerifyFailed" => Ok(MaskProviderPhase::ErrVerifyFailed),
+            "Ready" => Ok(MaskProviderPhase::Ready),
+            "Active" => Ok(MaskProviderPhase::Active),
             _ => Err(()),
         }
     }
 }
 
-impl fmt::Display for ProviderPhase {
+impl fmt::Display for MaskProviderPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ProviderPhase::Pending => write!(f, "Pending"),
-            ProviderPhase::ErrSecretNotFound => write!(f, "ErrSecretNotFound"),
-            ProviderPhase::Verifying => write!(f, "Verifying"),
-            ProviderPhase::Verified => write!(f, "Verified"),
-            ProviderPhase::ErrVerifyFailed => write!(f, "ErrVerifyFailed"),
-            ProviderPhase::Ready => write!(f, "Ready"),
-            ProviderPhase::Active => write!(f, "Active"),
+            MaskProviderPhase::Pending => write!(f, "Pending"),
+            MaskProviderPhase::ErrSecretNotFound => write!(f, "ErrSecretNotFound"),
+            MaskProviderPhase::Verifying => write!(f, "Verifying"),
+            MaskProviderPhase::Verified => write!(f, "Verified"),
+            MaskProviderPhase::ErrVerifyFailed => write!(f, "ErrVerifyFailed"),
+            MaskProviderPhase::Ready => write!(f, "Ready"),
+            MaskProviderPhase::Active => write!(f, "Active"),
         }
     }
 }
 
 /// Mask is a resource that represents a VPN connection.
-/// It reserves a slot with a Provider resource, and
+/// It reserves a slot with a MaskProvider resource, and
 /// creates a Secret resource containing the environment
 /// variables to be injected into the gluetun container.
 #[derive(CustomResource, Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
@@ -213,7 +213,7 @@ impl fmt::Display for ProviderPhase {
 pub struct MaskSpec {
     /// Optional list of providers to use at the exclusion of others.
     /// Omit the field if you are okay with being assigned any provider.
-    /// These values correspond to a Provider resource's spec.tags.
+    /// These values correspond to a MaskProvider resource's spec.tags.
     pub providers: Option<Vec<String>>,
 }
 
@@ -236,19 +236,19 @@ pub struct MaskStatus {
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
 pub struct AssignedProvider {
-    /// Name of the assigned Provider resource.
+    /// Name of the assigned MaskProvider resource.
     pub name: String,
 
-    /// Namespace of the assigned Provider resource.
+    /// Namespace of the assigned MaskProvider resource.
     pub namespace: String,
 
-    /// UID of the assigned Provider resource. Used to ensure
-    /// the reference is valid if case a Provider resource is
+    /// UID of the assigned MaskProvider resource. Used to ensure
+    /// the reference is valid if case a MaskProvider resource is
     /// deleted and recreated with the same name.
     pub uid: String,
 
     /// Slot index assigned to this Mask. This value must be
-    /// less than the Provider's spec.maxClients, and is used
+    /// less than the MaskProvider's spec.maxClients, and is used
     /// to index the ConfigMap that reserves the slot.
     pub slot: usize,
 
@@ -256,7 +256,7 @@ pub struct AssignedProvider {
     /// variables to be injected into the gluetun container.
     /// The controller will create this secret in the same
     /// namespace as the Mask resource. Its contents mirror
-    /// the contents of the Provider's secret.
+    /// the contents of the MaskProvider's secret.
     pub secret: String,
 }
 
@@ -266,10 +266,10 @@ pub enum MaskPhase {
     /// The resource first appeared to the controller.
     Pending,
 
-    /// The resource is waiting for a slot with a Provider to become available.
+    /// The resource is waiting for a slot with a MaskProvider to become available.
     Waiting,
 
-    /// No suitable `Provider` resources were found.
+    /// No suitable `MaskProvider` resources were found.
     ErrNoProviders,
 
     /// The resource's VPN service credentials are ready to be used.

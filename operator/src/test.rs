@@ -7,7 +7,7 @@ use kube::{
     Api, CustomResourceExt, ResourceExt,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::{clone::Clone, collections::BTreeMap, fmt::Debug};
+use std::{clone::Clone, fmt::Debug};
 use tokio::spawn;
 use vpn_types::*;
 
@@ -42,11 +42,11 @@ async fn get_actual_provider_secret(client: Client) -> Result<Option<Secret>, Er
     Ok(Some(secret_api.get(&name).await?))
 }
 
-/// Returns the test Provider's credentials Secret resource.
+/// Returns the test MaskProvider's credentials Secret resource.
 /// If the environment specified a real secret, it will be used.
 /// This will also enable verification. Otherwise, mock credentials
 /// will be used and verificationwill be disabled.
-async fn get_test_provider_secret(client: Client, provider: &Provider) -> Result<Secret, Error> {
+async fn get_test_provider_secret(client: Client, provider: &MaskProvider) -> Result<Secret, Error> {
     // Use the default test credentials, which bypass verification.
     let env_secret = get_actual_provider_secret(client).await?;
     Ok(Secret {
@@ -89,26 +89,26 @@ async fn get_test_provider_secret(client: Client, provider: &Provider) -> Result
     })
 }
 
-/// Returns the test Provider resource. If we are using mock credentials,
+/// Returns the test MaskProvider resource. If we are using mock credentials,
 /// verification will be disabled. Otherwise, verification will be enabled.
-async fn get_test_provider(client: Client, name: &str, namespace: &str) -> Result<Provider, Error> {
-    Ok(Provider {
+async fn get_test_provider(client: Client, name: &str, namespace: &str) -> Result<MaskProvider, Error> {
+    Ok(MaskProvider {
         metadata: ObjectMeta {
             name: Some(name.to_owned()),
             namespace: Some(namespace.to_owned()),
             ..Default::default()
         },
-        spec: ProviderSpec {
+        spec: MaskProviderSpec {
             // Maximum number of active connections.
             max_slots: MAX_SLOTS,
             // Same of Secret containing the env credentials.
             secret: name.to_owned(),
-            // Only assign this Provider to Masks in the same namespace.
+            // Only assign this MaskProvider to Masks in the same namespace.
             namespaces: Some(vec![namespace.to_owned()]),
-            // Allow this Provider to be assigned to Masks requesting this tag.
+            // Allow this MaskProvider to be assigned to Masks requesting this tag.
             tags: Some(vec![name.to_owned()]),
             // We currently need to skip verification for testing.
-            verify: Some(ProviderVerifySpec {
+            verify: Some(MaskProviderVerifySpec {
                 // Skip verification if we are using the mock credentials.
                 skip: Some(get_actual_provider_secret(client).await?.is_none()),
                 timeout: Some("50s".to_owned()),
@@ -129,30 +129,30 @@ fn get_test_mask(namespace: &str, slot: usize, provider_label: &str) -> Mask {
             ..Default::default()
         },
         spec: MaskSpec {
-            // Only use the Provider created by this specific test.
+            // Only use the MaskProvider created by this specific test.
             providers: Some(vec![provider_label.to_owned()]),
         },
         ..Default::default()
     }
 }
 
-/// Create the test Provider's credentials Secret resource.
+/// Create the test MaskProvider's credentials Secret resource.
 async fn create_test_provider_secret(
     client: Client,
     namespace: &str,
-    provider: &Provider,
+    provider: &MaskProvider,
 ) -> Result<Secret, Error> {
     let secret = get_test_provider_secret(client.clone(), &provider).await?;
     let secret_api: Api<Secret> = Api::namespaced(client, namespace);
     Ok(secret_api.create(&Default::default(), &secret).await?)
 }
 
-/// Creates the test Provider and its secret.
+/// Creates the test MaskProvider and its secret.
 async fn create_test_provider(
     client: Client,
     namespace: &str,
     uid: &str,
-) -> Result<Provider, Error> {
+) -> Result<MaskProvider, Error> {
     let name = format!("{}-{}", PROVIDER_NAME, uid);
     //let provider = create_wait(
     //    client.clone(),
@@ -161,7 +161,7 @@ async fn create_test_provider(
     //    get_test_provider(client.clone(), &name, namespace).await?,
     //)
     //.await?;
-    let api: Api<Provider> = Api::namespaced(client.clone(), namespace);
+    let api: Api<MaskProvider> = Api::namespaced(client.clone(), namespace);
     let provider = api
         .create(
             &Default::default(),
@@ -169,7 +169,7 @@ async fn create_test_provider(
         )
         .await?;
     println!(
-        "Created Provider with uid {}",
+        "Created MaskProvider with uid {}",
         provider.metadata.uid.as_deref().unwrap()
     );
     create_test_provider_secret(client, namespace, &provider).await?;
@@ -192,13 +192,13 @@ async fn create_test_mask(
         .await?)
 }
 
-/// Waits for the test Provider to observe a certain phase.
+/// Waits for the test MaskProvider to observe a certain phase.
 async fn wait_for_provider_phase(
     client: Client,
     namespace: &str,
-    phase: ProviderPhase,
+    phase: MaskProviderPhase,
 ) -> Result<(), Error> {
-    let provider_api: Api<Provider> = Api::namespaced(client, namespace);
+    let provider_api: Api<MaskProvider> = Api::namespaced(client, namespace);
     let lp = ListParams::default().timeout(120);
     let mut stream = provider_api.watch(&lp, "0").await?.boxed();
     while let Some(event) = stream.try_next().await? {
@@ -226,12 +226,12 @@ async fn wait_for_provider_phase(
         return Ok(());
     }
     Err(Error::Other(format!(
-        "Provider not {} before timeout",
+        "MaskProvider not {} before timeout",
         phase
     )))
 }
 
-/// Waits for the test Provider to be assigned to the test Mask.
+/// Waits for the test MaskProvider to be assigned to the test Mask.
 async fn wait_for_provider_assignment(
     client: Client,
     namespace: &str,
@@ -264,7 +264,7 @@ async fn wait_for_provider_assignment(
         return Ok(provider);
     }
     Err(Error::Other(format!(
-        "Provider not assigned to Mask {} before timeout",
+        "MaskProvider not assigned to Mask {} before timeout",
         name,
     )))
 }
@@ -308,8 +308,8 @@ async fn wait_for_mask_phase(
     )))
 }
 
-/// Returns the test Provider's credentials Secret resource.
-async fn get_provider_secret(client: Client, provider: &Provider) -> Result<Secret, Error> {
+/// Returns the test MaskProvider's credentials Secret resource.
+async fn get_provider_secret(client: Client, provider: &MaskProvider) -> Result<Secret, Error> {
     let secret_api: Api<Secret> =
         Api::namespaced(client, provider.metadata.namespace.as_deref().unwrap());
     Ok(secret_api.get(&provider.spec.secret).await?)
@@ -377,12 +377,12 @@ async fn basic() -> Result<(), Error> {
     let (uid, namespace) = create_test_namespace(client.clone()).await?;
     let provider_label = format!("{}-{}", PROVIDER_NAME, uid);
 
-    // Create the test Provider.
+    // Create the test MaskProvider.
     let provider_ready = {
         let client = client.clone();
         let namespace = namespace.clone();
         spawn(
-            async move { wait_for_provider_phase(client, &namespace, ProviderPhase::Ready).await },
+            async move { wait_for_provider_phase(client, &namespace, MaskProviderPhase::Ready).await },
         )
     };
     let provider = create_test_provider(client.clone(), &namespace, &uid)
@@ -391,7 +391,7 @@ async fn basic() -> Result<(), Error> {
     let provider_uid = provider.metadata.uid.as_deref().unwrap();
     provider_ready.await.unwrap()?;
 
-    // Watch for a Provider to be assigned to the Mask.
+    // Watch for a MaskProvider to be assigned to the Mask.
     let mask_secret = {
         let mask_secret_name = format!("{}-{}-{}", MASK_NAME, 0, provider_uid);
         let client = client.clone();
@@ -418,7 +418,7 @@ async fn basic() -> Result<(), Error> {
     );
 
     // Ensure the Mask's credentials were correctly inherited
-    // from the Provider's secret. It should be an exact match.
+    // from the MaskProvider's secret. It should be an exact match.
     let mask_secret = mask_secret.await.unwrap()?;
     let provider_secret = get_provider_secret(client.clone(), &provider).await?;
     assert_eq!(provider_secret.data, mask_secret.data);
@@ -444,7 +444,7 @@ async fn err_no_providers() -> Result<(), Error> {
         )
     };
 
-    // Create a Mask without first creating the Provider.
+    // Create a Mask without first creating the MaskProvider.
     create_test_mask(client.clone(), &namespace, 0, &provider_label).await?;
 
     // Ensure the error state is observed.
@@ -461,14 +461,14 @@ async fn waiting() -> Result<(), Error> {
     let client: Client = Client::try_default().await.unwrap();
     let (uid, namespace) = create_test_namespace(client.clone()).await?;
 
-    // Create the test Provider.
+    // Create the test MaskProvider.
     let provider = create_test_provider(client.clone(), &namespace, &uid)
         .await
         .expect("failed to create test provider");
     let provider_name = provider.metadata.name.as_deref().unwrap();
     let provider_uid = provider.metadata.uid.as_deref().unwrap();
 
-    // Watch for a Provider to be assigned to the Mask.
+    // Watch for a MaskProvider to be assigned to the Mask.
     let mask0_secret_name = format!("{}-{}-{}", MASK_NAME, 0, provider_uid);
     let mask0_secret = {
         let client = client.clone();
@@ -501,7 +501,7 @@ async fn waiting() -> Result<(), Error> {
     );
 
     // Ensure the Mask's credentials were correctly inherited
-    // from the Provider's secret. It should be an exact match.
+    // from the MaskProvider's secret. It should be an exact match.
     let mask0_secret = mask0_secret.await.unwrap()?;
     let provider_secret = get_provider_secret(client.clone(), &provider).await?;
     assert_eq!(provider_secret.data, mask0_secret.data);
@@ -517,7 +517,7 @@ async fn waiting() -> Result<(), Error> {
     // Ensure the waiting status was observed.
     mask1_wait.await.unwrap()?;
 
-    // Delete the first Mask and ensure the second Mask is assigned to the Provider.
+    // Delete the first Mask and ensure the second Mask is assigned to the MaskProvider.
     let assigned_provider = {
         let client = client.clone();
         let namespace = namespace.clone();

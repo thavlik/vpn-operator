@@ -25,10 +25,10 @@ spec:
         description: Auto-generated derived type for MaskSpec via `CustomResource`
         properties:
           spec:
-            description: Mask is a resource that represents a VPN connection. It reserves a slot with a Provider resource, and creates a Secret resource containing the environment variables to be injected into the gluetun container.
+            description: Mask is a resource that represents a VPN connection. It reserves a slot with a MaskProvider resource, and creates a Secret resource containing the environment variables to be injected into the gluetun container.
             properties:
               providers:
-                description: Optional list of providers to use at the exclusion of others. Omit the field if you are okay with being assigned any provider. These values correspond to a Provider resource's spec.tags.
+                description: Optional list of providers to use at the exclusion of others. Omit the field if you are okay with being assigned any provider. These values correspond to a MaskProvider resource's spec.tags.
                 items:
                   type: string
                 nullable: true
@@ -60,21 +60,21 @@ spec:
                 nullable: true
                 properties:
                   name:
-                    description: Name of the assigned Provider resource.
+                    description: Name of the assigned MaskProvider resource.
                     type: string
                   namespace:
-                    description: Namespace of the assigned Provider resource.
+                    description: Namespace of the assigned MaskProvider resource.
                     type: string
                   secret:
-                    description: Name of the Secret resource which contains environment variables to be injected into the gluetun container. The controller will create this secret in the same namespace as the Mask resource. Its contents mirror the contents of the Provider's secret.
+                    description: Name of the Secret resource which contains environment variables to be injected into the gluetun container. The controller will create this secret in the same namespace as the Mask resource. Its contents mirror the contents of the MaskProvider's secret.
                     type: string
                   slot:
-                    description: Slot index assigned to this Mask. This value must be less than the Provider's spec.maxClients, and is used to index the ConfigMap that reserves the slot.
+                    description: Slot index assigned to this Mask. This value must be less than the MaskProvider's spec.maxClients, and is used to index the ConfigMap that reserves the slot.
                     format: uint
                     minimum: 0.0
                     type: integer
                   uid:
-                    description: UID of the assigned Provider resource. Used to ensure the reference is valid if case a Provider resource is deleted and recreated with the same name.
+                    description: UID of the assigned MaskProvider resource. Used to ensure the reference is valid if case a MaskProvider resource is deleted and recreated with the same name.
                     type: string
                 required:
                 - name

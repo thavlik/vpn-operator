@@ -143,51 +143,51 @@ lazy_static! {
     };
 }
 
-/// Updates the Provider's phase to Pending, which indicates
+/// Updates the MaskProvider's phase to Pending, which indicates
 /// the resource made its initial appearance to the operator.
-pub async fn pending(client: Client, instance: &Provider) -> Result<(), Error> {
+pub async fn pending(client: Client, instance: &MaskProvider) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.message = Some("Resource first appeared to the controller.".to_owned());
-        status.phase = Some(ProviderPhase::Pending);
+        status.phase = Some(MaskProviderPhase::Pending);
     })
     .await?;
     Ok(())
 }
 
-/// Updates the Provider's phase to Ready, which indicates
+/// Updates the MaskProvider's phase to Ready, which indicates
 /// the VPN provider is ready to use.
-pub async fn ready(client: Client, instance: &Provider) -> Result<(), Error> {
+pub async fn ready(client: Client, instance: &MaskProvider) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.message = Some("VPN service is ready to use.".to_owned());
-        status.phase = Some(ProviderPhase::Ready);
+        status.phase = Some(MaskProviderPhase::Ready);
         status.active_slots = Some(0);
     })
     .await?;
     Ok(())
 }
 
-/// Updates the Provider's phase to Active, which indicates
+/// Updates the MaskProvider's phase to Active, which indicates
 /// the VPN provider is in use by one or more pods.
-pub async fn active(client: Client, instance: &Provider, active_slots: usize) -> Result<(), Error> {
+pub async fn active(client: Client, instance: &MaskProvider, active_slots: usize) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.message = Some(format!("VPN service is in use by {} Masks.", active_slots));
-        status.phase = Some(ProviderPhase::Active);
+        status.phase = Some(MaskProviderPhase::Active);
         status.active_slots = Some(active_slots);
     })
     .await?;
     Ok(())
 }
 
-/// Updates the Provider's phase to ErrSecretNotFound, which indicates
+/// Updates the MaskProvider's phase to ErrSecretNotFound, which indicates
 /// the VPN provider is ready to use.
 pub async fn secret_missing(
     client: Client,
-    instance: &Provider,
+    instance: &MaskProvider,
     secret_name: &str,
 ) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.message = Some(format!("Secret '{}' does not exist.", secret_name));
-        status.phase = Some(ProviderPhase::ErrSecretNotFound);
+        status.phase = Some(MaskProviderPhase::ErrSecretNotFound);
     })
     .await?;
     Ok(())
@@ -204,19 +204,19 @@ async fn list_masks(client: Client) -> Result<Vec<Mask>, Error> {
         .collect())
 }
 
-/// Returns true if the Mask resource is assigned this Provider.
+/// Returns true if the Mask resource is assigned this MaskProvider.
 fn mask_uses_provider(name: &str, namespace: &str, uid: &str, mask: &Mask) -> bool {
     match mask
         .status
         .as_ref()
         .map_or(None, |status| status.provider.as_ref())
     {
-        // Mask is assigned a Provider.
+        // Mask is assigned a MaskProvider.
         Some(provider) => {
-            // Check if the assigned Provider matches the given one.
+            // Check if the assigned MaskProvider matches the given one.
             provider.name == name && provider.namespace == namespace && provider.uid == uid
         }
-        // Mask is not assigned a Provider.
+        // Mask is not assigned a MaskProvider.
         _ => false,
     }
 }
@@ -224,13 +224,13 @@ fn mask_uses_provider(name: &str, namespace: &str, uid: &str, mask: &Mask) -> bo
 /// Update the status object to show the verification is in progress.
 pub async fn verify_progress(
     client: Client,
-    instance: &Provider,
+    instance: &MaskProvider,
     _start_time: Option<Time>,
     message: String,
 ) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.message = Some(message);
-        status.phase = Some(ProviderPhase::Verifying);
+        status.phase = Some(MaskProviderPhase::Verifying);
     })
     .await?;
     Ok(())
@@ -240,12 +240,12 @@ pub async fn verify_progress(
 /// encountered during verification.
 pub async fn verify_failed(
     client: Client,
-    instance: &Provider,
+    instance: &MaskProvider,
     message: String,
 ) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.message = Some(message);
-        status.phase = Some(ProviderPhase::ErrVerifyFailed);
+        status.phase = Some(MaskProviderPhase::ErrVerifyFailed);
     })
     .await?;
     Ok(())
@@ -342,12 +342,12 @@ pub fn get_verify_mask_name(name: &str) -> String {
 }
 
 /// Labels for the verification Mask resource.
-fn verify_mask_labels(instance: &Provider) -> BTreeMap<String, String> {
+fn verify_mask_labels(instance: &MaskProvider) -> BTreeMap<String, String> {
     let mut labels: BTreeMap<String, String> = BTreeMap::new();
     // Add a label to the Mask so that we can easily find it.
     labels.insert("app".to_owned(), MANAGER_NAME.to_owned());
-    // Indicate the Mask is meant for this Provider's verification.
-    // This will force assign the Mask regardless of the Provider's
+    // Indicate the Mask is meant for this MaskProvider's verification.
+    // This will force assign the Mask regardless of the MaskProvider's
     // phase and the only error possible will be ErrNoSlots.
     labels.insert(
         VERIFICATION_LABEL.to_owned(),
@@ -357,7 +357,7 @@ fn verify_mask_labels(instance: &Provider) -> BTreeMap<String, String> {
 }
 
 /// Returns the Mask resource used to cloak the verification Pod.
-fn verify_mask(name: &str, namespace: &str, instance: &Provider) -> Mask {
+fn verify_mask(name: &str, namespace: &str, instance: &MaskProvider) -> Mask {
     Mask {
         metadata: ObjectMeta {
             name: Some(get_verify_mask_name(name)),
@@ -377,7 +377,7 @@ fn verify_mask(name: &str, namespace: &str, instance: &Provider) -> Mask {
 fn verify_pod(
     name: &str,
     namespace: &str,
-    instance: &Provider,
+    instance: &MaskProvider,
     secret: &Secret,
     mask: &Mask,
 ) -> Result<Pod, Error> {
@@ -439,10 +439,10 @@ fn verify_pod(
 }
 
 /// Signals that the VPN credentials are verified.
-pub async fn verified(client: Client, instance: &Provider) -> Result<(), Error> {
+pub async fn verified(client: Client, instance: &MaskProvider) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.last_verified = Some(chrono::Utc::now().to_rfc3339());
-        status.phase = Some(ProviderPhase::Verified);
+        status.phase = Some(MaskProviderPhase::Verified);
         status.message = Some("VPN credentials verified as authentic.".to_owned())
     })
     .await?;
@@ -454,7 +454,7 @@ pub async fn create_verify_mask(
     client: Client,
     name: &str,
     namespace: &str,
-    instance: &Provider,
+    instance: &MaskProvider,
 ) -> Result<Mask, Error> {
     let mask_api: Api<Mask> = Api::namespaced(client, namespace);
     let mask = verify_mask(name, namespace, instance);
@@ -466,7 +466,7 @@ pub async fn create_verify_pod(
     client: Client,
     name: &str,
     namespace: &str,
-    instance: &Provider,
+    instance: &MaskProvider,
     mask: &Mask,
 ) -> Result<Pod, Error> {
     // Get the VPN credentials secret so we know which keys
@@ -474,18 +474,18 @@ pub async fn create_verify_pod(
     let secret_api: Api<Secret> = Api::namespaced(client.clone(), namespace);
     let secret = secret_api.get(&instance.spec.secret).await?;
 
-    // Create the pod, honoring overrides in the Provider spec.
+    // Create the pod, honoring overrides in the MaskProvider spec.
     let pod = verify_pod(name, namespace, instance, &secret, mask)?;
     let pod_api: Api<Pod> = Api::namespaced(client, namespace);
     Ok(pod_api.create(&Default::default(), &pod).await?)
 }
 
-/// Unassigns all Mask resources that are assigned to this Provider.
+/// Unassigns all Mask resources that are assigned to this MaskProvider.
 pub async fn unassign_all(
     client: Client,
     name: &str,
     namespace: &str,
-    instance: &Provider,
+    instance: &MaskProvider,
 ) -> Result<(), Error> {
     // List all Mask resources.
     let uid = instance.metadata.uid.as_deref().unwrap();
@@ -498,7 +498,7 @@ pub async fn unassign_all(
         // Reconciliation will trigger a new assignment.
         patch_status(client.clone(), &mask, |status| {
             status.provider = None;
-            status.message = Some("Provider was unassigned upon its deletion.".to_owned());
+            status.message = Some("MaskProvider was unassigned upon its deletion.".to_owned());
             status.phase = Some(MaskPhase::Waiting);
         })
         .await?;
@@ -514,10 +514,10 @@ pub async fn unassign_all(
 pub async fn delete_mask_secret(
     client: Client,
     mask: &Mask,
-    provider: &Provider,
+    provider: &MaskProvider,
 ) -> Result<(), Error> {
     // Because the Secret's name is based on the uid, we don't have
-    // to check its labels to make sure it belongs to the Provider.
+    // to check its labels to make sure it belongs to the MaskProvider.
     let secret_name = format!(
         "{}-{}",
         mask.metadata.name.as_deref().unwrap(),

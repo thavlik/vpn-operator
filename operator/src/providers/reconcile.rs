@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::time::Duration;
 
 #[cfg(metrics)]
-use crate::metrics::{PROVIDER_ACTION_COUNTER, PROVIDER_RECONCILE_COUNTER};
+use crate::metrics::{MaskProvider_ACTION_COUNTER, MaskProvider_RECONCILE_COUNTER};
 
 use super::{
     actions::{self, get_verify_mask_name, PROBE_CONTAINER_NAME, VPN_CONTAINER_NAME},
@@ -20,19 +20,19 @@ use super::{
 use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
 pub use vpn_types::*;
 
-/// Entrypoint for the `Provider` controller.
+/// Entrypoint for the `MaskProvider` controller.
 pub async fn run(client: Client) -> Result<(), Error> {
-    println!("Starting Provider controller...");
+    println!("Starting MaskProvider controller...");
 
     // Preparation of resources used by the `kube_runtime::Controller`
-    let crd_api: Api<Provider> = Api::all(client.clone());
+    let crd_api: Api<MaskProvider> = Api::all(client.clone());
     let context: Arc<ContextData> = Arc::new(ContextData::new(client.clone()));
 
     // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
     // It requires the following information:
-    // - `kube::Api<T>` this controller "owns". In this case, `T = Provider`, as this controller owns the `Provider` resource,
-    // - `kube::api::ListParams` to select the `Provider` resources with. Can be used for Provider filtering `Provider` resources before reconciliation,
-    // - `reconcile` function with reconciliation logic to be called each time a resource of `Provider` kind is created/updated/deleted,
+    // - `kube::Api<T>` this controller "owns". In this case, `T = MaskProvider`, as this controller owns the `MaskProvider` resource,
+    // - `kube::api::ListParams` to select the `MaskProvider` resources with. Can be used for MaskProvider filtering `MaskProvider` resources before reconciliation,
+    // - `reconcile` function with reconciliation logic to be called each time a resource of `MaskProvider` kind is created/updated/deleted,
     // - `on_error` function to call whenever reconciliation fails.
     Controller::new(crd_api, ListParams::default())
         .owns(Api::<ConfigMap>::all(client.clone()), ListParams::default())
@@ -40,10 +40,10 @@ pub async fn run(client: Client) -> Result<(), Error> {
         .run(reconcile, on_error, context)
         .for_each(|_reconciliation_result| async move {
             //match reconciliation_result {
-            //    Ok(_provider_resource) => {
+            //    Ok(_MaskProvider_resource) => {
             //        //println!(
             //        //    "Reconciliation successful. Resource: {:?}",
-            //        //    provider_resource
+            //        //    MaskProvider_resource
             //        //);
             //    }
             //    Err(reconciliation_err) => {
@@ -72,19 +72,19 @@ impl ContextData {
     }
 }
 
-/// Action to be taken upon an `Provider` resource during reconciliation
+/// Action to be taken upon an `MaskProvider` resource during reconciliation
 #[derive(Debug, PartialEq)]
-enum ProviderAction {
-    /// Set the `Provider` resource status.phase to Pending.
+enum MaskProviderAction {
+    /// Set the `MaskProvider` resource status.phase to Pending.
     Pending,
 
-    /// Adds the finalizer to the `Provider` resource.
+    /// Adds the finalizer to the `MaskProvider` resource.
     AddFinalizer,
 
     /// Cleans up all subresources across all namespaces.
     Delete,
 
-    /// Set the `Provider` resource status.phase to ErrSecretNotFound.
+    /// Set the `MaskProvider` resource status.phase to ErrSecretNotFound.
     SecretNotFound(String),
 
     /// Create a Mask to reserve a slot for verification.
@@ -105,29 +105,29 @@ enum ProviderAction {
     /// Set the status to ErrVerifyFailed.
     VerifyFailed(String),
 
-    /// Set the `Provider` resource status.phase to Ready.
+    /// Set the `MaskProvider` resource status.phase to Ready.
     Ready,
 
-    /// Set the `Provider` resource status.phase to Active.
+    /// Set the `MaskProvider` resource status.phase to Active.
     Active { active_slots: usize },
 
-    /// This `Provider` resource is in desired state and requires no actions to be taken
+    /// This `MaskProvider` resource is in desired state and requires no actions to be taken
     NoOp,
 }
 
-/// Reconciliation function for the `Provider` resource.
-async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result<Action, Error> {
+/// Reconciliation function for the `MaskProvider` resource.
+async fn reconcile(instance: Arc<MaskProvider>, context: Arc<ContextData>) -> Result<Action, Error> {
     // The `Client` is shared -> a clone from the reference is obtained
     let client: Client = context.client.clone();
 
-    // The resource of `Provider` kind is required to have a namespace set. However, it is not guaranteed
+    // The resource of `MaskProvider` kind is required to have a namespace set. However, it is not guaranteed
     // the resource will have a `namespace` set. Therefore, the `namespace` field on object's metadata
     // is optional and Rust forces the programmer to check for it's existence first.
     let namespace: String = match instance.namespace() {
         None => {
             // If there is no namespace to deploy to defined, reconciliation ends with an error immediately.
             return Err(Error::UserInputError(
-                "Expected Provider resource to be namespaced. Can't deploy to an unknown namespace."
+                "Expected MaskProvider resource to be namespaced. Can't deploy to an unknown namespace."
                     .to_owned(),
             ));
         }
@@ -136,11 +136,11 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
         Some(namespace) => namespace,
     };
 
-    // Name of the Provider resource is used to name the subresources as well.
+    // Name of the MaskProvider resource is used to name the subresources as well.
     let name = instance.name_any();
 
     #[cfg(metrics)]
-    PROVIDER_RECONCILE_COUNTER
+    MaskProvider_RECONCILE_COUNTER
         .with_label_values(&[&name, &namespace])
         .inc();
 
@@ -151,19 +151,19 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
     // Read phase of reconciliation determines goal during the write phase.
     let action = determine_action(client.clone(), &name, &namespace, &instance).await?;
 
-    if action != ProviderAction::NoOp {
+    if action != MaskProviderAction::NoOp {
         println!("{}/{} ACTION: {:?}", namespace, name, action);
     }
 
     // Report the read phase performance.
     #[cfg(metrics)]
-    PROVIDER_READ_HISTOGRAM
+    MaskProvider_READ_HISTOGRAM
         .with_label_values(&[&name, &namespace, action.into()])
         .observe(start.elapsed().as_secs_f64());
 
     // Increment the counter for the action.
     #[cfg(metrics)]
-    PROVIDER_ACTION_COUNTER
+    MaskProvider_ACTION_COUNTER
         .with_label_values(&[&name, &namespace, action.into()])
         .inc();
 
@@ -171,10 +171,10 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
     #[cfg(metrics)]
     let timer = match action {
         // Don't measure time for NoOp actions.
-        ProviderAction::NoOp => None,
+        MaskProviderAction::NoOp => None,
         // Start a performance timer for the write phase.
         _ => Some(
-            PROVIDER_WRITE_HISTOGRAM
+            MaskProvider_WRITE_HISTOGRAM
                 .with_label_values(&[&name, &namespace, action.into()])
                 .start_timer(),
         ),
@@ -183,51 +183,51 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
     // Performs action as decided by the `determine_action` function.
     // This is the write phase of reconciliation.
     let result = match action {
-        ProviderAction::Pending => {
-            // Give the `Provider` resource a finalizer. This will be done
+        MaskProviderAction::Pending => {
+            // Give the `MaskProvider` resource a finalizer. This will be done
             // regardless of whether we do it now, but doing it now might
             // increase performance.
             let instance = finalizer::add(client.clone(), &name, &namespace).await?;
 
-            // Update the phase of the `Provider` resource to Pending.
+            // Update the phase of the `MaskProvider` resource to Pending.
             actions::pending(client, &instance).await?;
 
             // Requeue immediately.
             Action::requeue(Duration::ZERO)
         }
-        ProviderAction::AddFinalizer => {
-            // Ensure the finalizer is present on the `Provider` resource.
+        MaskProviderAction::AddFinalizer => {
+            // Ensure the finalizer is present on the `MaskProvider` resource.
             finalizer::add(client, &name, &namespace).await?;
 
             // Requeue immediately.
             Action::requeue(Duration::ZERO)
         }
-        ProviderAction::Delete => {
+        MaskProviderAction::Delete => {
             // Delete the verification Pod.
             actions::delete_verify_pod(client.clone(), &name, &namespace).await?;
 
             // Delete the verification Mask.
             actions::delete_verify_mask(client.clone(), &name, &namespace).await?;
 
-            // Delete Secrets in namespaces that use this `Provider`.
+            // Delete Secrets in namespaces that use this `MaskProvider`.
             // This will prevent `Masks` from continuing to use the credentials
-            // assigned to them by this `Provider`.
+            // assigned to them by this `MaskProvider`.
             actions::unassign_all(client.clone(), &name, &namespace, &instance).await?;
 
-            // Remove the finalizer, which will allow the Provider resource to be deleted.
+            // Remove the finalizer, which will allow the MaskProvider resource to be deleted.
             finalizer::delete(client, &name, &namespace).await?;
 
             // No need to requeue as the resource is being deleted.
             Action::await_change()
         }
-        ProviderAction::SecretNotFound(secret_name) => {
+        MaskProviderAction::SecretNotFound(secret_name) => {
             // Reflect the error in the status object.
             actions::secret_missing(client, &instance, &secret_name).await?;
 
             // Requeue after a while if the resource doesn't change.
             Action::requeue(PROBE_INTERVAL)
         }
-        ProviderAction::CreateVerifyMask => {
+        MaskProviderAction::CreateVerifyMask => {
             // Create the verification Mask.
             actions::create_verify_mask(client.clone(), &name, &namespace, &instance).await?;
 
@@ -243,7 +243,7 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // Requeue after a short delay to allow the verification time to complete.
             Action::requeue(PROBE_INTERVAL)
         }
-        ProviderAction::CreateVerifyPod(mask) => {
+        MaskProviderAction::CreateVerifyPod(mask) => {
             // Create the verification pod.
             let pod =
                 actions::create_verify_pod(client.clone(), &name, &namespace, &instance, &mask)
@@ -261,7 +261,7 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // Requeue after a short delay to allow the verification time to complete.
             Action::requeue(PROBE_INTERVAL)
         }
-        ProviderAction::Verifying {
+        MaskProviderAction::Verifying {
             start_time,
             message,
         } => {
@@ -271,8 +271,8 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // Requeue after a short delay to allow the verification time to complete.
             Action::requeue(PROBE_INTERVAL)
         }
-        ProviderAction::VerifyFailed(message) => {
-            // Update the phase of the `Provider` resource to Verified.
+        MaskProviderAction::VerifyFailed(message) => {
+            // Update the phase of the `MaskProvider` resource to Verified.
             actions::verify_failed(client.clone(), &instance, message).await?;
 
             // Delete the verification Pod so it can be recreated.
@@ -284,7 +284,7 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // Requeue after a delay so the user has time to see the error phase.
             Action::requeue(PROBE_INTERVAL)
         }
-        ProviderAction::Verified => {
+        MaskProviderAction::Verified => {
             // Set the timestamp of when the verification completed.
             actions::verified(client.clone(), &instance).await?;
 
@@ -297,22 +297,22 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
             // Requeue immediately to proceed with reconciliation.
             Action::requeue(Duration::ZERO)
         }
-        ProviderAction::Ready => {
-            // Update the phase of the `Provider` resource to Ready.
+        MaskProviderAction::Ready => {
+            // Update the phase of the `MaskProvider` resource to Ready.
             actions::ready(client, &instance).await?;
 
             // Requeue after a short delay.
             Action::requeue(PROBE_INTERVAL)
         }
-        ProviderAction::Active { active_slots } => {
-            // Update the phase of the `Provider` resource to Active.
+        MaskProviderAction::Active { active_slots } => {
+            // Update the phase of the `MaskProvider` resource to Active.
             actions::active(client, &instance, active_slots).await?;
 
             // Requeue after a short delay.
             Action::requeue(PROBE_INTERVAL)
         }
         // The resource is already in desired state, do nothing and re-check after 10 seconds
-        ProviderAction::NoOp => Action::requeue(PROBE_INTERVAL),
+        MaskProviderAction::NoOp => Action::requeue(PROBE_INTERVAL),
     };
 
     #[cfg(metrics)]
@@ -323,15 +323,15 @@ async fn reconcile(instance: Arc<Provider>, context: Arc<ContextData>) -> Result
     Ok(result)
 }
 
-/// needs_pending returns true if the `Provider` resource
+/// needs_pending returns true if the `MaskProvider` resource
 /// requires a status update to set the phase to Pending.
 /// This should be the first action for any managed resource.
-fn needs_pending(instance: &Provider) -> bool {
+fn needs_pending(instance: &MaskProvider) -> bool {
     instance.status.is_none() || instance.status.as_ref().unwrap().phase.is_none()
 }
 
-/// Returns the phase of the Provider.
-pub fn get_provider_phase(instance: &Provider) -> Result<(ProviderPhase, Duration), Error> {
+/// Returns the phase of the MaskProvider.
+pub fn get_provider_phase(instance: &MaskProvider) -> Result<(MaskProviderPhase, Duration), Error> {
     let status = instance
         .status
         .as_ref()
@@ -348,11 +348,11 @@ pub fn get_provider_phase(instance: &Provider) -> Result<(ProviderPhase, Duratio
     Ok((phase, age.to_std()?))
 }
 
-/// Gets the secret that contains the credentials for the Provider.
+/// Gets the secret that contains the credentials for the MaskProvider.
 async fn get_secret(
     client: Client,
     namespace: &str,
-    provider: &Provider,
+    provider: &MaskProvider,
 ) -> Result<Option<Secret>, Error> {
     let api: Api<Secret> = Api::namespaced(client, namespace);
     match api.get(&provider.spec.secret).await {
@@ -362,25 +362,25 @@ async fn get_secret(
     }
 }
 
-/// Returns true if the Provider is missing the finalizer.
-fn needs_finalizer(instance: &Provider) -> bool {
+/// Returns true if the MaskProvider is missing the finalizer.
+fn needs_finalizer(instance: &MaskProvider) -> bool {
     !instance.finalizers().iter().any(|f| f == FINALIZER_NAME)
 }
 
 /// Resources arrives into reconciliation queue in a certain state. This function looks at
-/// the state of given `Provider` resource and decides which actions needs to be performed.
-/// The finite set of possible actions is represented by the `ProviderAction` enum.
+/// the state of given `MaskProvider` resource and decides which actions needs to be performed.
+/// The finite set of possible actions is represented by the `MaskProviderAction` enum.
 ///
 /// # Arguments
-/// - `provider`: A reference to `Provider` being reconciled to decide next action upon.
+/// - `MaskProvider`: A reference to `MaskProvider` being reconciled to decide next action upon.
 async fn determine_action(
     client: Client,
     name: &str,
     namespace: &str,
-    instance: &Provider,
-) -> Result<ProviderAction, Error> {
+    instance: &MaskProvider,
+) -> Result<MaskProviderAction, Error> {
     if instance.meta().deletion_timestamp.is_some() {
-        return Ok(ProviderAction::Delete);
+        return Ok(MaskProviderAction::Delete);
     }
 
     // Ensure that the resource has a status object with a phase.
@@ -388,27 +388,27 @@ async fn determine_action(
     // of both these fields and will panic if they are not present.
     if needs_pending(instance) {
         // This should be the first action for any freshly created
-        // Provider resources. It will be immediately requeued.
-        return Ok(ProviderAction::Pending);
+        // MaskProvider resources. It will be immediately requeued.
+        return Ok(MaskProviderAction::Pending);
     }
 
     // Ensure the resource has a finalizer so child resources
     // in other namespaces can be cleaned up before deletion.
     if needs_finalizer(instance) {
-        return Ok(ProviderAction::AddFinalizer);
+        return Ok(MaskProviderAction::AddFinalizer);
     }
 
-    // Ensure the Provider credentials secret exists.
+    // Ensure the MaskProvider credentials secret exists.
     if get_secret(client.clone(), namespace, instance)
         .await?
         .is_none()
     {
         // The resource specifies using a Secret that doesn't exist.
-        // This is the only error state for the Provider resource.
-        return Ok(ProviderAction::SecretNotFound(instance.spec.secret.clone()));
+        // This is the only error state for the MaskProvider resource.
+        return Ok(MaskProviderAction::SecretNotFound(instance.spec.secret.clone()));
     }
 
-    // Check if the Provider requires verification.
+    // Check if the MaskProvider requires verification.
     if let Some(action) = determine_verify_action(client.clone(), name, namespace, instance).await?
     {
         return Ok(action);
@@ -419,12 +419,12 @@ async fn determine_action(
 }
 
 lazy_static! {
-    static ref DEFAULT_VERIFY_SPEC: ProviderVerifySpec = Default::default();
+    static ref DEFAULT_VERIFY_SPEC: MaskProviderVerifySpec = Default::default();
 }
 
 const DEFAULT_VERIFY_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Gets the verification Mask for the Provider.
+/// Gets the verification Mask for the MaskProvider.
 async fn get_verify_mask(
     client: Client,
     name: &str,
@@ -439,7 +439,7 @@ async fn get_verify_mask(
     }
 }
 
-/// Gets the verification pod for the Provider.
+/// Gets the verification pod for the MaskProvider.
 async fn get_verify_pod(client: Client, name: &str, namespace: &str) -> Result<Option<Pod>, Error> {
     let api: Api<Pod> = Api::namespaced(client, namespace);
     match api.get(name).await {
@@ -463,7 +463,7 @@ fn get_pod_age(pod: &Pod) -> Result<Duration, Error> {
 
 /// Returns the amount of time the verification pod is allowed to run
 /// before it is considered a failure.
-fn get_verify_timeout(instance: &Provider) -> Duration {
+fn get_verify_timeout(instance: &MaskProvider) -> Duration {
     instance
         .spec
         .verify
@@ -475,31 +475,31 @@ fn get_verify_timeout(instance: &Provider) -> Duration {
 
 /// Determines the action given that the verification Mask is present
 /// and the Pod is not.
-fn determine_verify_mask_action(mask: Mask) -> Result<ProviderAction, Error> {
+fn determine_verify_mask_action(mask: Mask) -> Result<MaskProviderAction, Error> {
     Ok(match mask.status.as_ref().map_or(None, |s| s.phase) {
         // Controller is still processing the Mask.
-        Some(MaskPhase::Pending) | None => ProviderAction::Verifying {
+        Some(MaskPhase::Pending) | None => MaskProviderAction::Verifying {
             start_time: None,
             message: "Waiting on the controller for the verification Mask.".to_owned(),
         },
         // The Mask is ready to be used in the verification Pod.
         // It should never be Active here, but if it, we know the
         // Pod doesn't exist and we shouldn't be exceeding maxSlots.
-        Some(MaskPhase::Ready) | Some(MaskPhase::Active) => ProviderAction::CreateVerifyPod(mask),
-        // The Provider has too many active slots, we will have to wait.
-        Some(MaskPhase::Waiting) => ProviderAction::Verifying {
+        Some(MaskPhase::Ready) | Some(MaskPhase::Active) => MaskProviderAction::CreateVerifyPod(mask),
+        // The MaskProvider has too many active slots, we will have to wait.
+        Some(MaskPhase::Waiting) => MaskProviderAction::Verifying {
             start_time: None,
             message: "Waiting for the verification Mask to be assigned a slot.".to_owned(),
         },
-        // Unreachable branch: failed to assign the Provider.
-        Some(MaskPhase::ErrNoProviders) => ProviderAction::VerifyFailed(
+        // Unreachable branch: failed to assign the MaskProvider.
+        Some(MaskPhase::ErrNoProviders) => MaskProviderAction::VerifyFailed(
             "Verification Mask observed unexpected ErrNoProviders.".to_owned(),
         ),
     })
 }
 
 /// Determines the action given that the verification Pod is present.
-fn determine_verify_pod_action(instance: &Provider, pod: &Pod) -> Result<ProviderAction, Error> {
+fn determine_verify_pod_action(instance: &MaskProvider, pod: &Pod) -> Result<MaskProviderAction, Error> {
     // Examine the status object of the pod.
     let status = pod
         .status
@@ -516,14 +516,14 @@ fn determine_verify_pod_action(instance: &Provider, pod: &Pod) -> Result<Provide
     // (but it will read NotReady), and the container status can be
     // inspected to determine the VPN connection was successful.
     if is_probe_successful(status) {
-        return Ok(ProviderAction::Verified);
+        return Ok(MaskProviderAction::Verified);
     }
 
     Ok(match phase {
         // Verification pod is waiting to be scheduled.
         // This may be an error if the pod isn't able to be scheduled.
         "Pending" => match check_pod_scheduling_error(status) {
-            Some(message) => ProviderAction::VerifyFailed(message),
+            Some(message) => MaskProviderAction::VerifyFailed(message),
             None => check_verify_timeout(instance, &pod)?,
         },
         // Verification pod is still waiting for the IP to change.
@@ -531,26 +531,26 @@ fn determine_verify_pod_action(instance: &Provider, pod: &Pod) -> Result<Provide
         // Verification has completed (new IP obtained).
         // This is what should be observed according to the
         // Kubernetes docs, but it doesn't seem to be the case.
-        "Succeeded" => ProviderAction::Verified,
+        "Succeeded" => MaskProviderAction::Verified,
         // Unknown error.
-        _ => ProviderAction::VerifyFailed("Unknown error occurred during verification.".to_owned()),
+        _ => MaskProviderAction::VerifyFailed("Unknown error occurred during verification.".to_owned()),
     })
 }
 
 /// Returns the action given that the verification Pod
 /// is in a Pending or Running phase. Checks to see if
 /// the verification attempt has timed out.
-fn check_verify_timeout(instance: &Provider, pod: &Pod) -> Result<ProviderAction, Error> {
+fn check_verify_timeout(instance: &MaskProvider, pod: &Pod) -> Result<MaskProviderAction, Error> {
     // Make sure the verification pod isn't too old.
     // If it goes past the timeout, it doesn't matter what
     // phase it's in, it will be considered a failure.
     Ok(if get_pod_age(pod)? > get_verify_timeout(instance) {
-        ProviderAction::VerifyFailed(
+        MaskProviderAction::VerifyFailed(
             "Verification timed out waiting for Pod to schedule.".to_owned(),
         )
     } else {
         // Still waiting for pod to be scheduled.
-        ProviderAction::Verifying {
+        MaskProviderAction::Verifying {
             start_time: pod.metadata.creation_timestamp.clone(),
             message: "Waiting on verification Pod to start.".to_owned(),
         }
@@ -596,8 +596,8 @@ async fn determine_verify_action(
     client: Client,
     name: &str,
     namespace: &str,
-    instance: &Provider,
-) -> Result<Option<ProviderAction>, Error> {
+    instance: &MaskProvider,
+) -> Result<Option<MaskProviderAction>, Error> {
     let verify = match instance.spec.verify {
         // User is requesting verification be skipped.
         Some(ref verify) if verify.skip.unwrap_or(false) => return Ok(None),
@@ -646,27 +646,27 @@ async fn determine_verify_action(
     }
 
     // Create the verification resources.
-    Ok(Some(ProviderAction::CreateVerifyMask))
+    Ok(Some(MaskProviderAction::CreateVerifyMask))
 }
 
-/// Returns the number of reservation ConfigMaps for a Provider.
+/// Returns the number of reservation ConfigMaps for a MaskProvider.
 async fn count_reservations(
     client: Client,
     namespace: &str,
-    instance: &Provider,
+    instance: &MaskProvider,
 ) -> Result<usize, Error> {
-    // Only count reservations that belong to this specific Provider.
+    // Only count reservations that belong to this specific MaskProvider.
     // Filtering this way excludes reservations from deleted resources
     // that were immediately recreated.
     let uid = instance.metadata.uid.as_deref().unwrap();
 
-    // Count the ConfigMaps with the Provider as the owner.
+    // Count the ConfigMaps with the MaskProvider as the owner.
     Ok(Api::<ConfigMap>::namespaced(client, namespace)
         .list(&ListParams::default())
         .await?
         .into_iter()
         .filter(|cm| {
-            // Only inspect ConfigMaps owned by this Provider.
+            // Only inspect ConfigMaps owned by this MaskProvider.
             cm.metadata
                 .owner_references
                 .as_ref()
@@ -680,24 +680,24 @@ async fn count_reservations(
 async fn determine_status_action(
     client: Client,
     namespace: &str,
-    instance: &Provider,
-) -> Result<ProviderAction, Error> {
-    // Count the ConfigMaps with the Provider as the owner.
+    instance: &MaskProvider,
+) -> Result<MaskProviderAction, Error> {
+    // Count the ConfigMaps with the MaskProvider as the owner.
     let active_slots = count_reservations(client, namespace, instance).await?;
     let (phase, age) = get_provider_phase(instance)?;
     if active_slots > 0 {
-        if phase != ProviderPhase::Active || age > PROBE_INTERVAL {
+        if phase != MaskProviderPhase::Active || age > PROBE_INTERVAL {
             // Keep the Active status up to date.
-            return Ok(ProviderAction::Active { active_slots });
+            return Ok(MaskProviderAction::Active { active_slots });
         }
     } else {
-        if phase != ProviderPhase::Ready || age > PROBE_INTERVAL {
+        if phase != MaskProviderPhase::Ready || age > PROBE_INTERVAL {
             // Keep the Ready status up to date.
-            return Ok(ProviderAction::Ready);
+            return Ok(MaskProviderAction::Ready);
         }
     }
     // Nothing to do, resource is fully reconciled.
-    Ok(ProviderAction::NoOp)
+    Ok(MaskProviderAction::NoOp)
 }
 
 /// Actions to be taken when a reconciliation fails - for whatever reason.
@@ -708,7 +708,7 @@ async fn determine_status_action(
 /// - `instance`: The erroneous resource.
 /// - `error`: A reference to the `kube::Error` that occurred during reconciliation.
 /// - `_context`: Unused argument. Context Data "injected" automatically by kube-rs.
-fn on_error(instance: Arc<Provider>, error: &Error, _context: Arc<ContextData>) -> Action {
+fn on_error(instance: Arc<MaskProvider>, error: &Error, _context: Arc<ContextData>) -> Action {
     eprintln!("Reconciliation error:\n{:?}.\n{:?}", error, instance);
     Action::requeue(Duration::from_secs(5))
 }

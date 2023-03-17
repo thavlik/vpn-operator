@@ -32,8 +32,8 @@ impl Status for MaskStatus {
     }
 }
 
-impl Object<ProviderStatus> for Provider {
-    fn mut_status(&mut self) -> &mut ProviderStatus {
+impl Object<MaskProviderStatus> for MaskProvider {
+    fn mut_status(&mut self) -> &mut MaskProviderStatus {
         if self.status.is_some() {
             return self.status.as_mut().unwrap();
         }
@@ -42,7 +42,7 @@ impl Object<ProviderStatus> for Provider {
     }
 }
 
-impl Status for ProviderStatus {
+impl Status for MaskProviderStatus {
     fn set_last_updated(&mut self, last_updated: String) {
         self.last_updated = Some(last_updated);
     }

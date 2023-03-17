@@ -7,7 +7,7 @@ use kube::{
 use std::collections::BTreeMap;
 use vpn_types::*;
 
-/// Updates the Provider's phase to Pending, which indicates
+/// Updates the `MaskProvider`'s phase to Pending, which indicates
 /// the resource made its initial appearance to the operator.
 pub async fn pending(client: Client, instance: &Mask) -> Result<(), Error> {
     patch_status(client, instance, |status| {
@@ -18,8 +18,8 @@ pub async fn pending(client: Client, instance: &Mask) -> Result<(), Error> {
     Ok(())
 }
 
-/// Delete the resources associated with the Mask's reservation
-/// of a Provider and nullifies the Mask's provider status object.
+/// Delete the resources associated with the `Mask`'s reservation of a
+/// `MaskProvider` and nullifies the `Mask`'s provider status object.
 pub async fn unassign_provider(
     client: Client,
     name: &str,
@@ -48,30 +48,30 @@ pub async fn unassign_provider(
     patch_status(client, instance, |status| {
         status.provider = None;
         status.phase = Some(MaskPhase::Pending);
-        status.message = Some("Provider was unassigned.".to_owned());
+        status.message = Some("MaskProvider was unassigned.".to_owned());
     })
     .await?;
 
     Ok(())
 }
 
-/// Lists all Provider resources, cluster-wide, that are in the Active phase.
-/// An optional filter can specified, in which case only Providers with a
+/// Lists all MaskProvider resources, cluster-wide, that are in the Active phase.
+/// An optional filter can specified, in which case only MaskProviders with a
 /// matching tags will be returned.
 async fn list_active_providers(
     client: Client,
     filter_tags: Option<&Vec<String>>,
     mask_namespace: &str,
-) -> Result<Vec<Provider>, Error> {
-    let api: Api<Provider> = Api::all(client);
-    let mut providers: Vec<Provider> = api
+) -> Result<Vec<MaskProvider>, Error> {
+    let api: Api<MaskProvider> = Api::all(client);
+    let mut providers: Vec<MaskProvider> = api
         .list(&Default::default())
         .await?
         .into_iter()
         .filter(|p| p.metadata.deletion_timestamp.is_none())
         .filter(|p| {
-            // Filter out Providers that have namespace preferences.
-            // If the Provider has no namespace preferences, it is
+            // Filter out MaskProviders that have namespace preferences.
+            // If the MaskProvider has no namespace preferences, it is
             // assumed to be available in all namespaces.
             p.spec
                 .namespaces
@@ -79,18 +79,18 @@ async fn list_active_providers(
                 .map_or(true, |ns| ns.iter().any(|n| n == mask_namespace))
         })
         .filter(|p| {
-            // Ignore Providers that aren't in the Ready or Active phases.
+            // Ignore MaskProviders that aren't in the Ready or Active phases.
             p.status
                 .as_ref()
                 .map_or(None, |s| s.phase)
                 .map_or(false, |p| {
-                    p == ProviderPhase::Ready || p == ProviderPhase::Active
+                    p == MaskProviderPhase::Ready || p == MaskProviderPhase::Active
                 })
         })
         .collect();
     if let Some(ref filter_tags) = filter_tags {
-        // The Mask is asking for one or more specific Providers.
-        // Only return Providers with matching tags.
+        // The Mask is asking for one or more specific MaskProviders.
+        // Only return MaskProviders with matching tags.
         providers = providers
             .into_iter()
             .filter(|p| {
@@ -103,14 +103,14 @@ async fn list_active_providers(
     Ok(providers)
 }
 
-// Attempts to reserve a slot with the Provider. Returns true
+// Attempts to reserve a slot with the MaskProvider. Returns true
 // if a slot was reserved, false otherwise.
 async fn try_reserve_slot(
     client: Client,
     name: &str,
     namespace: &str,
     instance: &Mask,
-    provider: &Provider,
+    provider: &MaskProvider,
 ) -> Result<bool, Error> {
     let owner_uid = instance.metadata.uid.as_deref().unwrap();
     let provider_name = provider.metadata.name.as_deref().unwrap();
@@ -136,11 +136,11 @@ async fn try_reserve_slot(
             Err(e) => return Err(e.into()),
         }
         let msg = format!(
-            "reserved slot {} for Provider {}/{}",
+            "reserved slot {} for MaskProvider {}/{}",
             slot, provider_namespace, provider_name,
         );
         println!("Mask {}/{} {}", namespace, name, msg);
-        // Patch the Mask resource to assign the Provider.
+        // Patch the Mask resource to assign the MaskProvider.
         let provider_uid = provider.metadata.uid.clone().unwrap();
         patch_status(client, instance, move |status| {
             let secret = format!("{}-{}", name, &provider_uid);
@@ -158,18 +158,18 @@ async fn try_reserve_slot(
         // after which the Mask's phase will be updated to Active.
         return Ok(true);
     }
-    // Failed to reserve a slot with the Provider.
+    // Failed to reserve a slot with the MaskProvider.
     Ok(false)
 }
 
-/// Assigns a new Provider to the Mask. Returns true
-/// if a Provider was assigned, false otherwise.
+/// Assigns a new MaskProvider to the Mask. Returns true
+/// if a MaskProvider was assigned, false otherwise.
 async fn assign_provider_base(
     client: Client,
     name: &str,
     namespace: &str,
     instance: &Mask,
-    providers: &Vec<Provider>,
+    providers: &Vec<MaskProvider>,
 ) -> Result<bool, Error> {
     for provider in providers {
         if try_reserve_slot(client.clone(), name, namespace, instance, provider).await? {
@@ -179,8 +179,8 @@ async fn assign_provider_base(
     Ok(false)
 }
 
-/// Assign a Provider to a Mask that is meant for verifying the service.
-/// This will skip checks on the Provider's status, only failing if there
+/// Assign a MaskProvider to a Mask that is meant for verifying the service.
+/// This will skip checks on the MaskProvider's status, only failing if there
 /// are no empty slots available.
 pub async fn assign_verify_provider(
     client: Client,
@@ -189,8 +189,8 @@ pub async fn assign_verify_provider(
     instance: &Mask,
     provider_uid: &str,
 ) -> Result<bool, Error> {
-    // Get the Provider resource we are verifying.
-    let provider_api: Api<Provider> = Api::namespaced(client.clone(), namespace);
+    // Get the MaskProvider resource we are verifying.
+    let provider_api: Api<MaskProvider> = Api::namespaced(client.clone(), namespace);
     let provider = provider_api
         .list(&Default::default())
         .await?
@@ -199,13 +199,13 @@ pub async fn assign_verify_provider(
         .next()
         .ok_or_else(|| {
             Error::UserInputError(format!(
-                "Provider with uid {} not found in namespace {}",
+                "MaskProvider with uid {} not found in namespace {}",
                 provider_uid, namespace
             ))
         })?;
-    // Only assign the Provider that the Mask is meant to verify.
+    // Only assign the MaskProvider that the Mask is meant to verify.
     if try_reserve_slot(client.clone(), name, namespace, instance, &provider).await? {
-        // Provider had an open slot and it was reserved.
+        // MaskProvider had an open slot and it was reserved.
         return Ok(true);
     }
     // Prune and try again.
@@ -216,23 +216,23 @@ pub async fn assign_verify_provider(
     }
     patch_status(client, instance, |status| {
         status.phase = Some(MaskPhase::Waiting);
-        status.message = Some("Waiting on a slot from the Provider.".to_owned());
+        status.message = Some("Waiting on a slot from the MaskProvider.".to_owned());
     })
     .await?;
     return Ok(false);
 }
 
-/// Assigns a new Provider to the Mask. Prunes and retries if necessary.
-/// Returns true if a Provider was assigned, false otherwise.
+/// Assigns a new MaskProvider to the Mask. Prunes and retries if necessary.
+/// Returns true if a MaskProvider was assigned, false otherwise.
 pub async fn assign_provider(
     client: Client,
     name: &str,
     namespace: &str,
     instance: &Mask,
 ) -> Result<bool, Error> {
-    // This will be set to the Provider's uid if the Mask is meant
+    // This will be set to the MaskProvider's uid if the Mask is meant
     // for verification of the credentials. In this case, a slot will
-    // be assigned regardless of the Provider's phase. The only problem
+    // be assigned regardless of the MaskProvider's phase. The only problem
     // that may occur is that all slots are already in use.
     if let Some(provider_uid) = instance
         .metadata
@@ -247,7 +247,7 @@ pub async fn assign_provider(
     let providers =
         list_active_providers(client.clone(), instance.spec.providers.as_ref(), namespace).await?;
     if providers.is_empty() {
-        // No valid Providers at all. Reflect the error in the status.
+        // No valid MaskProviders at all. Reflect the error in the status.
         patch_status(client, instance, |status| {
             status.phase = Some(MaskPhase::ErrNoProviders);
             status.message = Some("No VPN providers available.".to_owned());
@@ -258,7 +258,7 @@ pub async fn assign_provider(
         return Ok(false);
     }
 
-    // For the first attempt, filter out the Providers that have reached
+    // For the first attempt, filter out the MaskProviders that have reached
     // their capacity. This way we can try not slamming the kube api server
     // with a bunch of requests that are likely to fail in the first place.
     // The status object may be stale, so if we fail the first attempt we
@@ -282,21 +282,21 @@ pub async fn assign_provider(
     let new_providers =
         list_active_providers(client.clone(), instance.spec.providers.as_ref(), namespace).await?;
     if pruned || providers.len() != new_providers.len() {
-        // Try a second time if we pruned or if we excluded any Providers
+        // Try a second time if we pruned or if we excluded any MaskProviders
         // during the first attempt due to possibly stale status objects.
         if assign_provider_base(client.clone(), name, namespace, instance, &new_providers).await? {
             return Ok(true);
         }
     }
 
-    // Unable to find an empty slot with any Provider.
+    // Unable to find an empty slot with any MaskProvider.
     patch_status(client, instance, |status| {
         status.phase = Some(MaskPhase::Waiting);
-        status.message = Some("Waiting on a slot from a Provider.".to_owned());
+        status.message = Some("Waiting on a slot from a MaskProvider.".to_owned());
     })
     .await?;
 
-    // Signal to the caller that we failed to assign a Provider.
+    // Signal to the caller that we failed to assign a MaskProvider.
     Ok(false)
 }
 
@@ -304,7 +304,7 @@ pub async fn assign_provider(
 async fn check_prune(
     client: Client,
     namespace: &str,
-    provider: &Provider,
+    provider: &MaskProvider,
     slot: usize,
     reservation_name: &str,
 ) -> Result<bool, Error> {
@@ -345,8 +345,8 @@ async fn check_prune(
     }
 }
 
-/// Prunes dangling slots for a given Provider.
-async fn prune_provider(client: Client, provider: &Provider) -> Result<bool, Error> {
+/// Prunes dangling slots for a given MaskProvider.
+async fn prune_provider(client: Client, provider: &MaskProvider) -> Result<bool, Error> {
     let mut deleted = false;
     let name = provider.metadata.name.as_deref().unwrap();
     let namespace = provider.metadata.namespace.as_deref().unwrap();
@@ -367,7 +367,7 @@ async fn prune_provider(client: Client, provider: &Provider) -> Result<bool, Err
 /// Deletes dangling reservations that are no longer owned by a Mask.
 async fn prune(client: Client) -> Result<bool, Error> {
     let mut deleted = false;
-    let provider_api: Api<Provider> = Api::all(client.clone());
+    let provider_api: Api<MaskProvider> = Api::all(client.clone());
     let providers = provider_api.list(&Default::default()).await?;
     for provider in &providers {
         if prune_provider(client.clone(), provider).await? {
@@ -377,9 +377,9 @@ async fn prune(client: Client) -> Result<bool, Error> {
     Ok(deleted)
 }
 
-/// Returns true if the Mask resource is assigned the given Provider
+/// Returns true if the Mask resource is assigned the given MaskProvider
 /// and is reserving a slot with the given ID.
-fn mask_uses_reservation(instance: &Mask, provider: &Provider, slot: usize) -> bool {
+fn mask_uses_reservation(instance: &Mask, provider: &MaskProvider, slot: usize) -> bool {
     match instance.status.as_ref().unwrap().provider {
         None => false,
         Some(ref assigned) => {
@@ -390,16 +390,16 @@ fn mask_uses_reservation(instance: &Mask, provider: &Provider, slot: usize) -> b
     }
 }
 
-/// Returns a list of inactive slot numbers for the Provider.
-pub async fn list_inactive_slots(client: Client, provider: &Provider) -> Result<Vec<usize>, Error> {
+/// Returns a list of inactive slot numbers for the MaskProvider.
+pub async fn list_inactive_slots(client: Client, provider: &MaskProvider) -> Result<Vec<usize>, Error> {
     let active_slots = list_active_slots(client, provider).await?;
     Ok((0..provider.spec.max_slots)
         .filter(|slot| !active_slots.contains(slot))
         .collect())
 }
 
-/// Returns a list of active slot numbers for the Provider.
-pub async fn list_active_slots(client: Client, provider: &Provider) -> Result<Vec<usize>, Error> {
+/// Returns a list of active slot numbers for the MaskProvider.
+pub async fn list_active_slots(client: Client, provider: &MaskProvider) -> Result<Vec<usize>, Error> {
     let provider_uid = provider.metadata.uid.as_deref().unwrap();
     let cm_api: Api<ConfigMap> = Api::namespaced(
         client.clone(),
@@ -411,7 +411,7 @@ pub async fn list_active_slots(client: Client, provider: &Provider) -> Result<Ve
         .into_iter()
         .map(|cm| cm.metadata)
         .filter(|meta| {
-            // Filter out any ConfigMaps that don't belong to the Provider.
+            // Filter out any ConfigMaps that don't belong to the MaskProvider.
             meta.owner_references
                 .as_ref()
                 .map_or(false, |orefs| orefs.iter().any(|o| o.uid == provider_uid))
@@ -434,7 +434,7 @@ pub async fn create_reservation(
     client: Client,
     name: &str,
     namespace: &str,
-    provider: &Provider,
+    provider: &MaskProvider,
     slot: usize,
     owner_uid: String,
 ) -> Result<(), kube::Error> {
@@ -447,12 +447,12 @@ pub async fn create_reservation(
                 slot
             )),
             namespace: provider.metadata.namespace.clone(),
-            // Set the Provider as the owner reference so the
-            // ConfigMap will be deleted with the Provider.
-            // This is important when a Provider is deleted
+            // Set the MaskProvider as the owner reference so the
+            // ConfigMap will be deleted with the MaskProvider.
+            // This is important when a MaskProvider is deleted
             // and recreated quickly, as otherwise there may
             // be some dangling reservations from the previous
-            // Provider resource. This ensure they are all
+            // MaskProvider resource. This ensure they are all
             // no matter how quickly it is recreated.
             owner_references: Some(vec![provider.controller_owner_ref(&()).unwrap()]),
             ..Default::default()
@@ -470,22 +470,22 @@ pub async fn create_reservation(
     Ok(())
 }
 
-/// Returns the Provider's secret resource, which contains the
+/// Returns the MaskProvider's secret resource, which contains the
 /// environment variables for connecting to a VPN server.
 pub async fn get_provider_secret(
     client: Client,
     name: &str,
     namespace: &str,
 ) -> Result<Secret, Error> {
-    // Get the Provider resource.
-    let provider_api: Api<Provider> = Api::namespaced(client.clone(), namespace);
+    // Get the MaskProvider resource.
+    let provider_api: Api<MaskProvider> = Api::namespaced(client.clone(), namespace);
     let provider = provider_api.get(name).await?;
     // Get the referenced Secret.
     let secret_api: Api<Secret> = Api::namespaced(client, namespace);
     Ok(secret_api.get(&provider.spec.secret).await?)
 }
 
-/// Creates the secret for the Mask to use. It is a copy of the Provider's secret.
+/// Creates the secret for the Mask to use. It is a copy of the MaskProvider's secret.
 pub async fn create_secret(client: Client, namespace: &str, instance: &Mask) -> Result<(), Error> {
     let provider = instance.status.as_ref().unwrap().provider.as_ref().unwrap();
     let provider_secret =
@@ -504,7 +504,7 @@ pub async fn create_secret(client: Client, namespace: &str, instance: &Mask) -> 
             }),
             ..Default::default()
         },
-        // Inherit all of the data from the Provider's secret.
+        // Inherit all of the data from the MaskProvider's secret.
         data: provider_secret.data,
         ..Default::default()
     };
@@ -576,7 +576,7 @@ pub async fn active(client: Client, instance: &Mask, pod_name: &str) -> Result<(
     Ok(())
 }
 
-/// Gets the ConfigMap that reserves a connection with the Provider.
+/// Gets the ConfigMap that reserves a connection with the MaskProvider.
 /// This is mechanism used to prevent multiple Masks from using the
 /// same connection.
 pub async fn get_reservation(

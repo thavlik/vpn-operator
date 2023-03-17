@@ -1,7 +1,9 @@
 # vpn-operator
 > Note that everything is experimental and may change at any time.
 
-Kubernetes operator for VPN sidecars written in pure [Rust](https://www.rust-lang.org/). This operator simplifies the process of hiding your pods behind one or more VPN services. Instead of assigning the same exact VPN sidecar to every pod you want cloaked, you use the included `Provider` and `Mask` Custom Resources to automate credentials distribution across any number of pods and VPN services.
+Kubernetes operator for VPN sidecars written in pure [Rust](https://www.rust-lang.org/). This operator simplifies the process of hiding your pods behind one or more VPN services. Instead of assigning the same exact VPN sidecar to every pod you want cloaked, you use the included `MaskProvider` and `Mask` Custom Resources to automate credentials distribution across any number of pods and VPN services.
+
+This project is ideal for applications that need to provision VPN-connected `Pod`s, like [ytdl-operator](https://github.com/thavlik/ytdl-operator).
 
 ## Installation
 1. Clone the repository:
@@ -41,7 +43,7 @@ helm install \
 ```
 
 ## Usage
-1. Create a `Provider` resource and accompanying `Secret` with your VPN credentials. Unless you set `spec.verify.skip=true` in the `Provider`, the controller will dial the service with your credentials as a way to automatically test the service end-to-end. The expected structure of the credentials `Secret` corresponds to environment variables for a [gluetun](https://github.com/qdm12/gluetun) container. Refer to the [gluetun wiki](https://github.com/qdm12/gluetun/wiki) for provider-specific guides.
+1. Create a `MaskProvider` resource and accompanying `Secret` with your VPN credentials. Unless you set `spec.verify.skip=true` in the `MaskProvider`, the controller will dial the service with your credentials as a way to automatically test the service end-to-end. The expected structure of the credentials `Secret` corresponds to environment variables for a [gluetun](https://github.com/qdm12/gluetun) container. Refer to the [gluetun wiki](https://github.com/qdm12/gluetun/wiki) for provider-specific guides.
 ```yaml
 apiVersion: v1
 kind: Secret
@@ -52,7 +54,7 @@ spec:
   stringData:
   # Environment variables for gluetun, or however you
   # choose to connect to your VPN. Set spec.verify.skip=true
-  # in the Provider to disable verification with gluetun.
+  # in the MaskProvider to disable verification with gluetun.
   # For example, with NordVPN: https://github.com/qdm12/gluetun/wiki/NordVPN
     VPN_SERVICE_PROVIDER: nordvpn
     OPENVPN_USER: myuser@mydomain.com
@@ -60,7 +62,7 @@ spec:
     SERVER_REGIONS: Netherlands # optional
 ---
 apiVersion: vpn.beebs.dev/v1
-kind: Provider
+kind: MaskProvider
 metadata:
   name: my-vpn
   namespace: default
@@ -76,11 +78,11 @@ spec:
   maxSlots: 5
 
   # You can optionally specify tag(s) so that Masks have the ability
-  # to select this service at the exclusion of others. This Provider
+  # to select this service at the exclusion of others. This MaskProvider
   # will match the tags "default", "preferred", and "my-vpn", which
-  # in effect establishes a set of use cases for this Provider.
+  # in effect establishes a set of use cases for this MaskProvider.
   # These values can be anything. This field is necessary because a
-  # Mask and its desired Provider(s) can be in different namespaces.
+  # Mask and its desired MaskProvider(s) can be in different namespaces.
   tags:
     - default
     - preferred
@@ -95,7 +97,7 @@ spec:
   verify:
     # Set to true to bypass credentials verification. This will allow
     # the structure of the Secret to be anything you want, and the
-    # Provider will immediately enter the Ready phase without truly
+    # MaskProvider will immediately enter the Ready phase without truly
     # knowing if the credentials are valid.
     skip: false
 
@@ -108,7 +110,7 @@ spec:
     # if you had a large number of services and you want to automate
     # the process of regularly verifying the credentials are valid.
     # Note that verification will create a Mask in order to reserve
-    # a slot with the Provider. Verification will be delayed until
+    # a slot with the MaskProvider. Verification will be delayed until
     # the slot is reserved, as to not exceed `maxSlots` connections. 
     interval: 24h
 
@@ -130,7 +132,7 @@ spec:
           image: curlimages/curl:7.88.1
         # Overrides for the VPN Container. This container connects
         # to the VPN service using environment variables from the
-        # Provider's credentials Secret. As all containers in a Pod
+        # MaskProvider's credentials Secret. As all containers in a Pod
         # share the same network, it will connect all containers
         # to the VPN.
         vpn:
@@ -143,26 +145,26 @@ spec:
           image: curlimages/curl:7.88.1
 ```
 
-2. Make sure the `Provider` enters the `Ready` phase:
+2. Make sure the `MaskProvider` enters the `Ready` phase:
 ```bash
 kubectl get provider -Aw
 ```
-If there is an error verifying the credentials, the phase of the `Provider` will be `ErrVerifyFailed` and you can view the error details by looking at its `status.message` field:
+If there is an error verifying the credentials, the phase of the `MaskProvider` will be `ErrVerifyFailed` and you can view the error details by looking at its `status.message` field:
 ```bash
 kubectl get provider -A -o yaml
 ```
 
-3. Create `Mask` resources to reserve slots with the `Provider`:
+3. Create `Mask` resources to reserve slots with the `MaskProvider`:
 ```yaml
 apiVersion: vpn.beebs.dev/v1
 kind: Mask
 metadata:
   name: my-mask
-  # Note the Mask's namespace can differ from an assigned Provider.
+  # Note the Mask's namespace can differ from an assigned MaskProvider.
   namespace: default
 spec:
-  # You can optionally require the Mask be assigned Providers with
-  # specific tags. These value correspond to a Provider's spec.tags
+  # You can optionally require the Mask be assigned MaskProviders with
+  # specific tags. These value correspond to a MaskProvider's spec.tags
   # and only one of them has to match.
   #providers: ["my-vpn"]
 ```
@@ -171,7 +173,7 @@ spec:
 ```bash
 kubectl get mask -Aw
 ```
-As with the `Provider` resource, the `Mask` also has a `status.message` field that provides a more verbose description of any errors encountered during reconciliation.
+As with the `MaskProvider` resource, the `Mask` also has a `status.message` field that provides a more verbose description of any errors encountered during reconciliation.
 
 5. The `Mask`'s status object contains a reference to the VPN credentials `Secret` created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. as environment variables into [gluetun](https://github.com/qdm12/gluetun)).
 
@@ -197,7 +199,7 @@ prometheus:
   # to scrape the controller pods using another method.
   podMonitors: true
 
-# The Mask and Provider resources have separate Deployments.
+# The Mask and MaskProvider resources have separate Deployments.
 # This improves scaling and allows you to configure their
 # resource budgets separately.
 # Note: the current values are not based on any empirical
@@ -224,11 +226,11 @@ controllers:
 ```
 
 ## Notes
-### Provider Phase
-These are the enum values for the `Provider` resource's `status.phase` field, which summarizes its current state:
+### MaskProvider Phase
+These are the enum values for the `MaskProvider` resource's `status.phase` field, which summarizes its current state:
 - **`Pending`**: The resource first appeared to the controller.
 - **`Verifying`**: The credentials are being verified with a [gluetun](https://github.com/qdm12/gluetun) pod.
-- **`Verified`**: Verification is complete. The `Provider` will become `Ready` or `Active` upon the next reconciliation.
+- **`Verified`**: Verification is complete. The `MaskProvider` will become `Ready` or `Active` upon the next reconciliation.
 - **`Ready`**: The service is ready to be used.
 - **`Active`**: The service is in use by one or more `Mask` resources.
 - **`ErrVerifyFailed`**: The credentials verification process failed.
@@ -237,10 +239,10 @@ These are the enum values for the `Provider` resource's `status.phase` field, wh
 ### Mask Phase
 These are the enum values for the `Mask` resource's `status.phase` field, which summarizes its current state:
 - **`Pending`**: The resource first appeared to the controller.
-- **`Waiting`**: The resource is waiting for a slot with a `Provider` to become available.
+- **`Waiting`**: The resource is waiting for a slot with a `MaskProvider` to become available.
 - **`Ready`**: The resource's VPN service credentials are ready to be used. 
 - **`Active`**: The resource's VPN service credentials are in use by a `Pod`.
-- **`ErrNoProviders`**: No suitable `Provider` resources were found.
+- **`ErrNoProviders`**: No suitable `MaskProvider` resources were found.
 
 ### Ownership model
 Any `Pod` that uses a `Mask` should have a reference to it in [`metadata.ownerReferences`](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) with `blockOwnerDeletion=true`. This way, the deletion of the `Mask` will be blocked until the `Pod` is deleted, and the `Pod` will automatically be garbage collected when its `Mask` is deleted. The controller also uses this relationship to determine whether a `Mask` is in the `Ready` (not in use) or the `Active` (in use) phase.
@@ -253,10 +255,10 @@ These are names and descriptions of [Prometheus](https://prometheus.io/) metrics
 - **`vpno_mask_action_counter`**: Number of actions taken by the `Mask` controller.
 - **`vpno_mask_read_duration_seconds`**: Amount of time taken by the read phase of the `Mask` controller.
 - **`vpno_mask_write_duration_seconds`**: Amount of time taken by the write phase of the `Mask` controller.
-- **`vpno_provider_reconcile_counter`**: Number of reconciliations by the `Provider` controller.
-- **`vpno_provider_action_counter`**: Number of actions taken by the `Provider` controller.
-- **`vpno_provider_read_duration_seconds`**: Amount of time taken by the read phase of the `Provider` controller.
-- **`vpno_provider_write_duration_seconds`**: Amount of time taken by the write phase of the `Provider` controller.
+- **`vpno_provider_reconcile_counter`**: Number of reconciliations by the `MaskProvider` controller.
+- **`vpno_provider_action_counter`**: Number of actions taken by the `MaskProvider` controller.
+- **`vpno_provider_read_duration_seconds`**: Amount of time taken by the read phase of the `MaskProvider` controller.
+- **`vpno_provider_write_duration_seconds`**: Amount of time taken by the write phase of the `MaskProvider` controller.
 - **`vpno_http_requests_total`**: Number of HTTP requests made to the metrics server.
 - **`vpno_http_response_size_bytes`**: Metrics server HTTP response sizes in bytes.
 - **`vpno_http_request_duration_seconds`**: Metrics server HTTP request latencies in seconds.
@@ -265,9 +267,9 @@ These are names and descriptions of [Prometheus](https://prometheus.io/) metrics
 While the controller code is fully capable of concurrent reconciliations, scaling is not as simple as increasing the number of replicas in the deployments. I have ideas for how to scale horizontally, so please open an issue if you encounter problems scaling vertically.
 
 ### Custom Resource Definitions (CRDs)
-The [CRDs](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/) for [`Mask`](crds/vpn.beebs.dev_mask_crd.yaml) and [`Provider`](crds/vpn.beebs.dev_provider_crd.yaml) are generated by [`kube-rs/kube`](https://github.com/kube-rs/kube) and include their comments from the [surrounding code](types/src/types.rs). You can view the field descriptions with `kubectl`:
+The [CRDs](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/) for [`Mask`](crds/vpn.beebs.dev_mask_crd.yaml) and [`MaskProvider`](crds/vpn.beebs.dev_maskprovider_crd.yaml) are generated by [`kube-rs/kube`](https://github.com/kube-rs/kube) and include their comments from the [surrounding code](types/src/types.rs). You can view the field descriptions with `kubectl`:
 ```bash
-kubectl get crd providers.vpn.beebs.dev -o yaml
+kubectl get crd maskproviders.vpn.beebs.dev -o yaml
 kubectl get crd masks.vpn.beebs.dev -o yaml
 ```
 

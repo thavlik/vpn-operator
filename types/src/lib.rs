@@ -309,10 +309,10 @@ pub enum MaskPhase {
     /// The [`Mask`] is waiting for an open slot with a suitable [`MaskProvider`].
     Waiting,
 
-    /// The resource's VPN service credentials are ready to be used.
+    /// The [`Mask`] resource's VPN service credentials are ready to be used.
     Ready,
 
-    /// The resource's VPN service credentials are in use by a Pod.
+    /// The [`Mask`] resource's VPN service credentials are in use by a Pod.
     Active,
 
     /// No suitable [`MaskProvider`] resources were found.

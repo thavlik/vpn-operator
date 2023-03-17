@@ -1,8 +1,14 @@
 [package]
 name = "vpn-operator"
 version = "0.1.0"
-authors = ["Tom Havlik (thavlik@protonmail.com)"]
-edition = "2018"
+homepage = "https://vpn.beebs.dev/"
+repository = "https://github.com/thavlik/vpn-operator/"
+authors = ["Tom Havlik <thavlik@protonmail.com>"]
+license = "MIT OR Apache-2.0"
+edition = "2021"
+keywords = ["vpn", "operator", "kubernetes", "k8s"]
+exclude = ["Dockerfile", "kindest.yaml"]
+publish = false # this crate is for the binary
 
 [dependencies]
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }

@@ -1,6 +1,4 @@
 FROM rust:1.67.1-slim-bullseye AS builder
-RUN rustup toolchain install nightly \
-    && rustup default nightly
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \

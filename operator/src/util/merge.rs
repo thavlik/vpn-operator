@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 /// Deep merge two json values. Moves the values of `b` into `a`.
-/// Source: https://stackoverflow.com/a/54118457
+/// Source: <https://stackoverflow.com/a/54118457>
 pub fn deep_merge(a: &mut Value, b: Value) {
     match (a, b) {
         // Both values are objects. Merge them and only unset

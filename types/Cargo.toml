@@ -1,13 +1,26 @@
 [package]
 name = "vpn-types"
 version = "0.1.0"
-authors = ["Tom Havlik (thavlik@protonmail.com)"]
-edition = "2018"
+description = "Kubernetes Custom Resource Definitions for vpn-operator"
+homepage = "https://vpn.beebs.dev/"
+repository = "https://github.com/thavlik/vpn-operator/"
+authors = ["Tom Havlik <thavlik@protonmail.com>"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+edition = "2021"
+keywords = ["vpn", "operator", "kubernetes", "k8s", "types"]
+categories = [
+    "network-programming",
+    "data-structures",
+    "api-bindings",
+    "encoding",
+]
+
+[badges]
+maintenance = { status = "actively-developed" }
 
 [dependencies]
-kube = { version = "0.78.0", default-features = false, features = [
-    "derive",
-] }
+kube = { version = "0.78.0", default-features = false, features = ["derive"] }
 k8s-openapi = { version = "0.17", default-features = false, features = [
     "v1_22",
 ] }

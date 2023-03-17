@@ -1,5 +1,3 @@
-use std::backtrace::Backtrace;
-
 /// All errors possible to occur during reconciliation
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -8,7 +6,6 @@ pub enum Error {
     KubeError {
         #[from]
         source: kube::Error,
-        backtrace: Backtrace,
     },
 
     /// Usually an error in a Mask, Provider, or a Provider's secret.

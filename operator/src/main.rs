@@ -1,5 +1,5 @@
-#![feature(provide_any)]
-#![feature(error_generic_member_access)]
+//#![feature(provide_any)]
+//#![feature(error_generic_member_access)]
 
 use clap::{Parser, Subcommand};
 use kube::client::Client;

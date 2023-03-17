@@ -25,28 +25,29 @@ spec:
         description: Auto-generated derived type for MaskSpec via `CustomResource`
         properties:
           spec:
-            description: Mask is a resource that represents a VPN connection. It reserves a slot with a MaskProvider resource, and creates a Secret resource containing the environment variables to be injected into the gluetun container.
+            description: '[`MaskSpec`] describes the configuration for a [`Mask`] resource, which is the mechanism for reserving slots with [`MaskProvider`] resources. Once a [`Mask`] is assigned a suitable provider, the controller copies the provider''s credentials to a [`Secret`](k8s_openapi::api::core::v1::Secret) owned by the [`Mask`] and references it as [`AssignedProvider::secret`] within [`MaskStatus::provider`].'
             properties:
               providers:
-                description: Optional list of providers to use at the exclusion of others. Omit the field if you are okay with being assigned any provider. These values correspond to a MaskProvider resource's spec.tags.
+                description: Optional list of providers to use at the exclusion of others. Omit if you are okay with being assigned any [`MaskProvider`]. These values correspond to [`MaskProviderSpec::tags`].
                 items:
                   type: string
                 nullable: true
                 type: array
             type: object
           status:
+            description: Status object for the [`Mask`] resource.
             nullable: true
             properties:
               lastUpdated:
-                description: Timestamp of when the status object was last updated.
+                description: Timestamp of when the [`MaskStatus`] was last updated.
                 nullable: true
                 type: string
               message:
-                description: A human-readable message indicating details about why the Mask is in this phase.
+                description: A human-readable message indicating details about why the [`Mask`] is in this phase.
                 nullable: true
                 type: string
               phase:
-                description: A short description of the Mask's current state.
+                description: A short description of the [`Mask`] resource's current state.
                 enum:
                 - Pending
                 - Waiting
@@ -56,25 +57,25 @@ spec:
                 nullable: true
                 type: string
               provider:
-                description: Details for the assigned VPN service provider.
+                description: Details for the assigned [`MaskProvider`].
                 nullable: true
                 properties:
                   name:
-                    description: Name of the assigned MaskProvider resource.
+                    description: Name of the assigned [`MaskProvider`] resource.
                     type: string
                   namespace:
-                    description: Namespace of the assigned MaskProvider resource.
+                    description: Namespace of the assigned [`MaskProvider`] resource.
                     type: string
                   secret:
-                    description: Name of the Secret resource which contains environment variables to be injected into the gluetun container. The controller will create this secret in the same namespace as the Mask resource. Its contents mirror the contents of the MaskProvider's secret.
+                    description: Name of the [`Secret`](k8s_openapi::api::core::v1::Secret) resource which contains environment variables to be injected into the gluetun container. The controller will create this in the same namespace as the [`Mask`] resource. Its contents mirror that of the [`Secret`](k8s_openapi::api::core::v1::Secret) referenced by [`MaskProviderSpec::secret`].
                     type: string
                   slot:
-                    description: Slot index assigned to this Mask. This value must be less than the MaskProvider's spec.maxClients, and is used to index the ConfigMap that reserves the slot.
+                    description: Slot index assigned to this [`Mask`]. This value must be less than [`MaskProviderSpec::max_slots`], and is used to index the [`ConfigMap`](k8s_openapi::api::core::v1::ConfigMap) that reserves the slot.
                     format: uint
                     minimum: 0.0
                     type: integer
                   uid:
-                    description: UID of the assigned MaskProvider resource. Used to ensure the reference is valid if case a MaskProvider resource is deleted and recreated with the same name.
+                    description: UID of the assigned [`MaskProvider`] resource. Used to ensure the reference is valid in case the [`MaskProvider`] is deleted and quickly recreated with the same name.
                     type: string
                 required:
                 - name

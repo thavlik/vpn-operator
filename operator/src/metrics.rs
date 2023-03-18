@@ -12,8 +12,8 @@ use prometheus::{Counter, CounterVec, Encoder, Gauge, HistogramVec, TextEncoder}
 
 /// The prefix to add to all the prometheus metrics keys.
 const METRICS_PREFIX: &str = "vpno_";
-const MASK_METRICS_PREFIX: &str = concatcp!(METRICS_PREFIX, "provider_");
-const PROVIDER_METRICS_PREFIX: &str = concatcp!(METRICS_PREFIX, "mask_");
+const MASK_METRICS_PREFIX: &str = concatcp!(METRICS_PREFIX, "mask_");
+const PROVIDER_METRICS_PREFIX: &str = concatcp!(METRICS_PREFIX, "provider_");
 
 lazy_static! {
     pub static ref MASK_RECONCILE_COUNTER: CounterVec = register_counter_vec!(

@@ -18,7 +18,7 @@ prometheus:
   # want to scrape the controller pods using another method.
   podMonitors: true
 
-# The Mask and Provider resources have separate Deployments.
+# The Mask and MaskProvider resources have separate Deployments.
 # This improves scaling and allows you to configure their
 # resource budgets separately.
 # Note: the current values are not based on any empirical

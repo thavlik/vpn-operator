@@ -9,16 +9,16 @@ use kube::{
 use lazy_static::lazy_static;
 use std::sync::Arc;
 use tokio::time::Duration;
-
-#[cfg(metrics)]
-use crate::metrics::{MaskProvider_ACTION_COUNTER, MaskProvider_RECONCILE_COUNTER};
+use vpn_types::*;
 
 use super::{
     actions::{self, get_verify_mask_name, PROBE_CONTAINER_NAME, VPN_CONTAINER_NAME},
     finalizer,
 };
 use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
-pub use vpn_types::*;
+
+#[cfg(feature = "metrics")]
+use super::metrics;
 
 /// Entrypoint for the `MaskProvider` controller.
 pub async fn run(client: Client) -> Result<(), Error> {
@@ -115,6 +115,25 @@ enum MaskProviderAction {
     NoOp,
 }
 
+impl MaskProviderAction {
+    fn to_str(&self) -> &str {
+        match self {
+            MaskProviderAction::Pending => "Pending",
+            MaskProviderAction::AddFinalizer => "AddFinalizer",
+            MaskProviderAction::Delete => "Delete",
+            MaskProviderAction::SecretNotFound(_) => "SecretNotFound",
+            MaskProviderAction::CreateVerifyMask => "CreateVerifyMask",
+            MaskProviderAction::CreateVerifyPod(_) => "CreateVerifyPod",
+            MaskProviderAction::Verifying { .. } => "Verifying",
+            MaskProviderAction::Verified => "Verified",
+            MaskProviderAction::VerifyFailed(_) => "VerifyFailed",
+            MaskProviderAction::Ready => "Ready",
+            MaskProviderAction::Active { .. } => "Active",
+            MaskProviderAction::NoOp => "NoOp",
+        }
+    }
+}
+
 /// Reconciliation function for the `MaskProvider` resource.
 async fn reconcile(
     instance: Arc<MaskProvider>,
@@ -142,43 +161,43 @@ async fn reconcile(
     // Name of the MaskProvider resource is used to name the subresources as well.
     let name = instance.name_any();
 
-    #[cfg(metrics)]
-    MaskProvider_RECONCILE_COUNTER
+    #[cfg(feature = "metrics")]
+    metrics::PROVIDER_RECONCILE_COUNTER
         .with_label_values(&[&name, &namespace])
         .inc();
 
     // Benchmark the read phase of reconciliation.
-    #[cfg(metrics)]
+    #[cfg(feature = "metrics")]
     let start = std::time::Instant::now();
 
     // Read phase of reconciliation determines goal during the write phase.
     let action = determine_action(client.clone(), &name, &namespace, &instance).await?;
 
     if action != MaskProviderAction::NoOp {
-        println!("{}/{} ACTION: {:?}", namespace, name, action);
+        println!("{}/{} ACTION: {:?}", namespace, name, action.to_str());
     }
 
     // Report the read phase performance.
-    #[cfg(metrics)]
-    MaskProvider_READ_HISTOGRAM
-        .with_label_values(&[&name, &namespace, action.into()])
+    #[cfg(feature = "metrics")]
+    metrics::PROVIDER_READ_HISTOGRAM
+        .with_label_values(&[&name, &namespace, action.to_str()])
         .observe(start.elapsed().as_secs_f64());
 
     // Increment the counter for the action.
-    #[cfg(metrics)]
-    MaskProvider_ACTION_COUNTER
-        .with_label_values(&[&name, &namespace, action.into()])
+    #[cfg(feature = "metrics")]
+    metrics::PROVIDER_ACTION_COUNTER
+        .with_label_values(&[&name, &namespace, action.to_str()])
         .inc();
 
     // Benchmark the write phase of reconciliation.
-    #[cfg(metrics)]
+    #[cfg(feature = "metrics")]
     let timer = match action {
-        // Don't measure time for NoOp actions.
+        // Don't measure performance for NoOp actions.
         MaskProviderAction::NoOp => None,
         // Start a performance timer for the write phase.
         _ => Some(
-            MaskProvider_WRITE_HISTOGRAM
-                .with_label_values(&[&name, &namespace, action.into()])
+            metrics::PROVIDER_WRITE_HISTOGRAM
+                .with_label_values(&[&name, &namespace, action.to_str()])
                 .start_timer(),
         ),
     };
@@ -318,7 +337,7 @@ async fn reconcile(
         MaskProviderAction::NoOp => Action::requeue(PROBE_INTERVAL),
     };
 
-    #[cfg(metrics)]
+    #[cfg(feature = "metrics")]
     if let Some(timer) = timer {
         timer.observe_duration();
     }

@@ -1,9 +1,5 @@
-//#![feature(provide_any)]
-//#![feature(error_generic_member_access)]
-
 use clap::{Parser, Subcommand};
 use kube::client::Client;
-pub use vpn_types::*;
 
 mod masks;
 mod providers;

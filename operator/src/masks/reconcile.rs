@@ -8,16 +8,16 @@ use kube::{
 };
 use std::sync::Arc;
 use tokio::time::Duration;
-pub use vpn_types::*;
-
-#[cfg(metrics)]
-use crate::metrics::{MASK_ACTION_COUNTER, MASK_RECONCILE_COUNTER, MASK_WRITE_HISTOGRAM};
+use vpn_types::*;
 
 use super::{
     actions::{self, owns_reservation},
     finalizer,
 };
 use crate::util::{Error, PROBE_INTERVAL};
+
+#[cfg(feature = "metrics")]
+use super::metrics;
 
 /// Entrypoint for the `Mask` controller.
 pub async fn run(client: Client) -> Result<(), Error> {
@@ -87,6 +87,20 @@ enum MaskAction {
     NoOp,
 }
 
+impl MaskAction {
+    fn to_str(&self) -> &str {
+        match self {
+            MaskAction::Pending => "Pending",
+            MaskAction::Assign => "Assign",
+            MaskAction::Delete => "Delete",
+            MaskAction::CreateSecret => "CreateSecret",
+            MaskAction::Ready => "Ready",
+            MaskAction::Active { .. } => "Active",
+            MaskAction::NoOp => "NoOp",
+        }
+    }
+}
+
 /// needs_pending returns true if the `Mask` resource
 /// requires a status update to set the phase to Pending.
 /// This should be the first action for any managed resource.
@@ -127,13 +141,13 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
     let name = instance.name_any();
 
     // Increment total number of reconciles for the Mask resource.
-    #[cfg(metrics)]
-    MASK_RECONCILE_COUNTER
+    #[cfg(feature = "metrics")]
+    metrics::MASK_RECONCILE_COUNTER
         .with_label_values(&[&name, &namespace])
         .inc();
 
     // Benchmark the read phase of reconciliation.
-    #[cfg(metrics)]
+    #[cfg(feature = "metrics")]
     let start = std::time::Instant::now();
 
     // Read phase of reconciliation determines goal during the write phase.
@@ -144,26 +158,26 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
     }
 
     // Report the read phase performance.
-    #[cfg(metrics)]
-    MASK_READ_HISTOGRAM
-        .with_label_values(&[&name, &namespace, action.into()])
+    #[cfg(feature = "metrics")]
+    metrics::MASK_READ_HISTOGRAM
+        .with_label_values(&[&name, &namespace, action.to_str()])
         .observe(start.elapsed().as_secs_f64());
 
     // Increment the counter for the action.
-    #[cfg(metrics)]
-    MASK_ACTION_COUNTER
-        .with_label_values(&[&name, &namespace, action.into()])
+    #[cfg(feature = "metrics")]
+    metrics::MASK_ACTION_COUNTER
+        .with_label_values(&[&name, &namespace, action.to_str()])
         .inc();
 
     // Benchmark the write phase of reconciliation.
-    #[cfg(metrics)]
+    #[cfg(feature = "metrics")]
     let timer = match action {
-        // Don't measure time for NoOp actions.
+        // Don't measure performance for NoOp actions.
         MaskAction::NoOp => None,
         // Start a performance timer for the write phase.
         _ => Some(
-            MASK_WRITE_HISTOGRAM
-                .with_label_values(&[&name, &namespace, action.into()])
+            metrics::MASK_WRITE_HISTOGRAM
+                .with_label_values(&[&name, &namespace, action.to_str()])
                 .start_timer(),
         ),
     };
@@ -234,7 +248,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
         MaskAction::NoOp => Action::requeue(PROBE_INTERVAL),
     };
 
-    #[cfg(metrics)]
+    #[cfg(feature = "metrics")]
     if let Some(timer) = timer {
         timer.observe_duration();
     }

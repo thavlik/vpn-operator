@@ -267,7 +267,8 @@ pub struct MaskStatus {
     pub provider: Option<AssignedProvider>,
 }
 
-/// Details about the [`MaskProvider`] assigned to this [`Mask`].
+/// Found in [`MaskStatus::provider`], this struct contains
+/// details about the [`MaskProvider`] assigned to this [`Mask`].
 /// If this object is not present, you should ensure that any
 /// [`Pod`](k8s_openapi::api::core::v1::Pod) that was consuming this
 /// [`Mask`] is deleted. Failure to do so may result in more connections

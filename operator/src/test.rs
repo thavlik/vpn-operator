@@ -548,9 +548,38 @@ async fn waiting() -> Result<(), Error> {
         format!("{}-{}", mask1.name_any(), provider_uid)
     );
 
+    // Delete the Provider and ensure the Mask has ErrNoProviders phase.
+    let mask1_wait = {
+        let client = client.clone();
+        let namespace = namespace.clone();
+        spawn(async move { wait_for_mask_phase(client, &namespace, 1, MaskPhase::ErrNoProviders).await })
+    };
+    delete_test_provider(client.clone(), &namespace, &provider_name).await?;
+
+    // Ensure the ErrNoProviders phase was observed.
+    mask1_wait.await.unwrap()?;
+
+    // Sanity check: ensure there are no MaskReservations in the namespace.
+    let mr_api: Api<MaskReservation> = Api::namespaced(client.clone(), &namespace);
+    let mr_list = mr_api.list(&ListParams::default()).await?;
+    assert_eq!(mr_list.items.len(), 0);
+
     // Garbage collect the test resources.
     cleanup(client, &namespace).await?;
 
+    Ok(())
+}
+
+/// Deletes the test MaskProvider.
+async fn delete_test_provider(client: Client, namespace: &str, name: &str) -> Result<(), Error> {
+    assert!(
+        delete_wait::<MaskProvider>(
+            client.clone(),
+            name,
+            namespace
+        )
+        .await?
+    );
     Ok(())
 }
 

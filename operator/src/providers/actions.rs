@@ -446,11 +446,7 @@ pub async fn create_verify_pod(
         })?;
 
     // Sanity check: make sure the the assigned provider matches the one we're verifying.
-    if instance
-        .metadata
-        .uid
-        .as_deref() != Some(&assigned_provider.uid)
-    {
+    if instance.metadata.uid.as_deref() != Some(&assigned_provider.uid) {
         return Err(Error::UserInputError(format!(
             "MaskConsumer is assigned to a different MaskProvider. Got {}, expected {}.",
             assigned_provider.uid,

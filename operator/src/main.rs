@@ -53,7 +53,8 @@ async fn run(client: Client) {
         Command::ManageMasks => masks::run(client).await,
         Command::ManageProviders => providers::run(client).await,
         Command::ManageReservations => reservations::run(client).await,
-    }.unwrap();
+    }
+    .unwrap();
 
     panic!("exited unexpectedly");
 }

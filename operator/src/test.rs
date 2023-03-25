@@ -262,12 +262,7 @@ async fn wait_for_provider_assignment(
         }
     }
     // Check if it's assigned now and we missed it.
-    if let Some(provider) = mc_api
-        .get(&name)
-        .await?
-        .status
-        .map_or(None, |s| s.provider)
-    {
+    if let Some(provider) = mc_api.get(&name).await?.status.map_or(None, |s| s.provider) {
         return Ok(provider);
     }
     Err(Error::Other(format!(
@@ -367,6 +362,7 @@ async fn create_test_namespace(client: Client) -> Result<(String, String), Error
     Ok((uid.to_owned(), name))
 }
 
+/// Deletes the namespace with the given name.
 async fn delete_namespace(client: Client, name: &str) -> Result<(), Error> {
     let namespace_api: Api<Namespace> = Api::all(client);
     namespace_api.delete(name, &Default::default()).await?;
@@ -552,17 +548,33 @@ async fn waiting() -> Result<(), Error> {
     let mask1_wait = {
         let client = client.clone();
         let namespace = namespace.clone();
-        spawn(async move { wait_for_mask_phase(client, &namespace, 1, MaskPhase::ErrNoProviders).await })
+        spawn(
+            async move { wait_for_mask_phase(client, &namespace, 1, MaskPhase::ErrNoProviders).await },
+        )
     };
     delete_test_provider(client.clone(), &namespace, &provider_name).await?;
 
     // Ensure the ErrNoProviders phase was observed.
     mask1_wait.await.unwrap()?;
 
+    // Sanity check: ensure all MaskConsumers in the namespace have ErrNoProviders.
+    assert!(Api::<MaskConsumer>::namespaced(client.clone(), &namespace)
+        .list(&Default::default())
+        .await?
+        .into_iter()
+        .filter_map(|mc| mc.status)
+        .filter_map(|s| s.phase)
+        .all(|p| p == MaskConsumerPhase::ErrNoProviders));
+
     // Sanity check: ensure there are no MaskReservations in the namespace.
-    let mr_api: Api<MaskReservation> = Api::namespaced(client.clone(), &namespace);
-    let mr_list = mr_api.list(&ListParams::default()).await?;
-    assert_eq!(mr_list.items.len(), 0);
+    assert_eq!(
+        Api::<MaskReservation>::namespaced(client.clone(), &namespace)
+            .list(&Default::default())
+            .await?
+            .items
+            .len(),
+        0
+    );
 
     // Garbage collect the test resources.
     cleanup(client, &namespace).await?;
@@ -572,14 +584,7 @@ async fn waiting() -> Result<(), Error> {
 
 /// Deletes the test MaskProvider.
 async fn delete_test_provider(client: Client, namespace: &str, name: &str) -> Result<(), Error> {
-    assert!(
-        delete_wait::<MaskProvider>(
-            client.clone(),
-            name,
-            namespace
-        )
-        .await?
-    );
+    assert!(delete_wait::<MaskProvider>(client.clone(), name, namespace).await?);
     Ok(())
 }
 

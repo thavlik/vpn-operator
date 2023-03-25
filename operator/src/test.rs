@@ -245,11 +245,11 @@ async fn wait_for_provider_assignment(
     slot: usize,
 ) -> Result<AssignedProvider, Error> {
     let name = format!("{}-{}", MASK_NAME, slot);
-    let mask_api: Api<Mask> = Api::namespaced(client, namespace);
+    let mc_api: Api<MaskConsumer> = Api::namespaced(client, namespace);
     let lp = ListParams::default()
         .fields(&format!("metadata.name={}", name))
         .timeout(120);
-    let mut stream = mask_api.watch(&lp, "0").await?.boxed();
+    let mut stream = mc_api.watch(&lp, "0").await?.boxed();
     while let Some(event) = stream.try_next().await? {
         match event {
             WatchEvent::Added(m) | WatchEvent::Modified(m) => {
@@ -262,7 +262,7 @@ async fn wait_for_provider_assignment(
         }
     }
     // Check if it's assigned now and we missed it.
-    if let Some(provider) = mask_api
+    if let Some(provider) = mc_api
         .get(&name)
         .await?
         .status
@@ -271,7 +271,7 @@ async fn wait_for_provider_assignment(
         return Ok(provider);
     }
     Err(Error::Other(format!(
-        "MaskProvider not assigned to Mask {} before timeout",
+        "MaskProvider not assigned to MaskConsumer {} before timeout",
         name,
     )))
 }
@@ -384,7 +384,7 @@ async fn basic() -> Result<(), Error> {
     let (uid, namespace) = create_test_namespace(client.clone()).await?;
     let provider_label = format!("{}-{}", PROVIDER_NAME, uid);
 
-    // Create the test MaskProvider.
+    // Create the test MaskProvider and wait for it to be Ready.
     let provider_ready = {
         let client = client.clone();
         let namespace = namespace.clone();

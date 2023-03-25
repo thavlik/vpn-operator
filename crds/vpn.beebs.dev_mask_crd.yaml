@@ -25,7 +25,10 @@ spec:
         description: Auto-generated derived type for MaskSpec via `CustomResource`
         properties:
           spec:
-            description: '[`MaskSpec`] describes the configuration for a [`Mask`] resource, which is the mechanism for reserving slots with [`MaskProvider`] resources. Once a [`Mask`] is assigned a suitable provider, the controller copies the provider''s credentials to a [`Secret`](k8s_openapi::api::core::v1::Secret) owned by the [`Mask`] and references it as [`AssignedProvider::secret`] within [`MaskStatus::provider`].'
+            description: |-
+              [`MaskSpec`] describes the configuration for a [`Mask`] resource, which is the mechanism for reserving slots with [`MaskProvider`] resources. The controller will create a [`MaskConsumer`] resource for each [`Mask`] that will be updated when it is assigned a [`MaskProvider`] and deleted whenever the provider is unassigned. This way any resources that consume the credentials can be garbage collected by using the [`MaskConsumer`] as an owner reference.
+
+              Once a [`Mask`] is assigned a suitable provider, the controller copies the provider's credentials to a [`Secret`](k8s_openapi::api::core::v1::Secret) owned by the [`MaskConsumer`] and references it as [`AssignedProvider::secret`] within [`MaskConsumerStatus::provider`].
             properties:
               providers:
                 description: Optional list of providers to use at the exclusion of others. Omit if you are okay with being assigned any [`MaskProvider`]. These values correspond to [`MaskProviderSpec::tags`], and only one of them has to match for the [`MaskProvider`] to be considered suitable.
@@ -51,39 +54,10 @@ spec:
                 enum:
                 - Pending
                 - Waiting
-                - Ready
                 - Active
                 - ErrNoProviders
                 nullable: true
                 type: string
-              provider:
-                description: Details for the assigned [`MaskProvider`].
-                nullable: true
-                properties:
-                  name:
-                    description: Name of the assigned [`MaskProvider`] resource.
-                    type: string
-                  namespace:
-                    description: Namespace of the assigned [`MaskProvider`] resource.
-                    type: string
-                  secret:
-                    description: Name of the [`Secret`](k8s_openapi::api::core::v1::Secret) resource which contains environment variables to be injected into a [gluetun](https://github.com/qdm12/gluetun) container. The controller will create this in the same namespace as the [`Mask`] resource. Its contents mirror that of the [`Secret`](k8s_openapi::api::core::v1::Secret) referenced by [`MaskProviderSpec::secret`].
-                    type: string
-                  slot:
-                    description: Slot index assigned to this [`Mask`]. This value must be less than [`MaskProviderSpec::max_slots`], and is used to index the [`ConfigMap`](k8s_openapi::api::core::v1::ConfigMap) that reserves the slot.
-                    format: uint
-                    minimum: 0.0
-                    type: integer
-                  uid:
-                    description: UID of the assigned [`MaskProvider`] resource. Used to ensure the reference is valid in case the [`MaskProvider`] is deleted and quickly recreated with the same name.
-                    type: string
-                required:
-                - name
-                - namespace
-                - secret
-                - slot
-                - uid
-                type: object
             type: object
         required:
         - spec

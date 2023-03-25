@@ -171,13 +171,17 @@ spec:
   #providers: ["my-vpn"]
 ```
 
-4. Wait for the `Mask`'s phase to be `Ready` before using it:
-```bash
-kubectl get mask -Aw
-```
-As with the `MaskProvider` resource, the `Mask` also has a `status.message` field that provides a more verbose description of any errors encountered during reconciliation.
+4. The controller will create a `MaskConsumer` resource with the same name/namespace as the `Mask` to manage provider assignment. Any `Pod`, `Job`, or whatever resource that make use of the assigned provider should carry a reference to the `MaskConsumer` (either directly in their `metadata.ownerReference` or indirectly through another owner object) so they will be deleted whenever the provider is unassigned.
 
-5. The `Mask`'s status object contains a reference to the VPN credentials `Secret` created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. as environment variables into [gluetun](https://github.com/qdm12/gluetun)).
+Wait for the `MaskConsumer`'s phase to be `Ready` before using it:
+```bash
+kubectl get maskconsumer -Aw
+```
+As with the `MaskProvider` resource, the `Mask` and `MaskConsumer` resources also have `status.message` fields that provide more verbose descriptions of any errors encountered during reconciliation.
+
+Note: you should always verify the `MaskConsumer` is owned by the `Mask` in question before using it. Failure to do so may result in using the wrong `MaskConsumer` instance, and the number of connections to a `MaskProvider` may exceed the limit specified by its `spec.maxSlots`.
+
+5. The `MaskConsumer`'s status object contains a reference to the VPN credentials `Secret` created for it at `status.provider.secret`. Plug these values into your sidecar containers (e.g. as environment variables into [gluetun](https://github.com/qdm12/gluetun)).
 
 ## Chart configuration (values.yaml)
 ```yaml
@@ -192,30 +196,30 @@ imagePullPolicy: Always
 prometheus:
   # Run the metrics server with the controllers. This will
   # report on the actions taken as well as how how much
-  # time elapses between their read/write phases. All keys
-  # are prefixed with 'vpno_'
+  # time elapses between their read/write phases.
+  # All keys are prefixed with 'vpno_'
   expose: true
 
-  # Create PodMonitor resources for the controllers. This
-  # value may be false while `expose` is true if you want
-  # to scrape the controller pods using another method.
+  # Create PodMonitor resources for the controllers.
+  # This value may be false while `expose` is true if you
+  # want to scrape the controller pods using another method.
   podMonitors: true
 
-# The Mask and MaskProvider resources have separate Deployments.
-# This improves scaling and allows you to configure their
-# resource budgets separately.
-# Note: the current values are not based on any empirical
+# Note: the resource limits are not based on any empirical
 # profiling. They are just a starting point and require
 # fine-tuning for future releases, but should be more than
 # enough for most scenarios.
 controllers:
+  # The Mask and MaskProvider resources have separate Deployments.
+  # This improves scaling and allows you to configure their
+  # resource budgets separately.
   masks:
     resources:
       requests:
         memory: 32Mi
         cpu: 10m
       limits:
-        memory: 128Mi
+        memory: 64Mi
         cpu: 100m
   providers:
     resources:
@@ -223,56 +227,73 @@ controllers:
         memory: 32Mi
         cpu: 10m
       limits:
-        memory: 128Mi
+        memory: 64Mi
+        cpu: 100m
+
+  # The MaskReservation controller is for garbage collection.
+  # It will delete any MaskReservations that point to MaskConsumers
+  # that no longer exist. You never create MaskReservations, the
+  # controller manages it automatically.
+  reservations:
+    resources:
+      requests:
+        memory: 32Mi
+        cpu: 10m
+      limits:
+        memory: 64Mi
+        cpu: 100m
+
+  # The MaskConsumer controller is used to assign MaskProviders
+  # to Masks and provide a way for any consuming resources to be
+  # deleted whenever the MaskProvider is unassigned.
+  consumers:
+    resources:
+      requests:
+        memory: 32Mi
+        cpu: 10m
+      limits:
+        memory: 64Mi
         cpu: 100m
 ```
 
 ## Notes
-### MaskProvider Phase
-These are the enum values for the `MaskProvider` resource's `status.phase` field, which summarizes its current state:
-- **`Pending`**: The resource first appeared to the controller.
-- **`Verifying`**: The credentials are being verified with a [gluetun](https://github.com/qdm12/gluetun) pod.
-- **`Verified`**: Verification is complete. The `MaskProvider` will become `Ready` or `Active` upon the next reconciliation.
-- **`Ready`**: The service is ready to be used.
-- **`Active`**: The service is in use by one or more `Mask` resources.
-- **`ErrVerifyFailed`**: The credentials verification process failed.
-- **`ErrSecretNotFound`**: The `Secret` resource referenced by `spec.secret` is missing.
-
-### Mask Phase
-These are the enum values for the `Mask` resource's `status.phase` field, which summarizes its current state:
-- **`Pending`**: The resource first appeared to the controller.
-- **`Waiting`**: The resource is waiting for a slot with a `MaskProvider` to become available.
-- **`Ready`**: The resource's VPN service credentials are ready to be used. 
-- **`Active`**: The resource's VPN service credentials are in use by a `Pod`.
-- **`ErrNoProviders`**: No suitable `MaskProvider` resources were found.
-
 ### Ownership model
-Any `Pod` that uses a `Mask` should have a reference to it in [`metadata.ownerReferences`](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) with `blockOwnerDeletion=true`. This way, the deletion of the `Mask` will be blocked until the `Pod` is deleted, and the `Pod` will automatically be garbage collected when its `Mask` is deleted. The controller also uses this relationship to determine whether a `Mask` is in the `Ready` (not in use) or the `Active` (in use) phase.
+Any `Pod` that uses a `Mask` should reference its `MaskConsumer` in [`metadata.ownerReferences`](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) with `blockOwnerDeletion=true`. This way, the deletion of the `MaskConsumer` (and the associated `MaskReservation` used to reserve the slot) will be blocked until the `Pod` is deleted, and the `Pod` will automatically be garbage collected when its `MaskConsumer` is deleted.
 
-Your `Mask` should have an owner reference to your custom resource, and your `Pod` should have owner references to both your `Mask` and the aforementioned custom resource. Your custom resource should be the only owner reference you create with `controller=true`, as your controller is responsible for reconciling your child `Mask` and `Pod` resources. The owner references with `controller=false` exist strictly for garbage collection purposes and, as described above, to determine if the `Mask` is `Ready` or `Active`.
+Your `Mask` should have an owner reference to your custom resource, and your `Pod` should have owner references to your `MaskConsumer` and (optionally) the aforementioned custom resource as well. Your custom resource should be the only owner reference you create with `controller=true`, as your controller is responsible for managing the `Mask` and `Pod` resources it creates. Owner references with `controller=false` exist strictly for garbage collection purposes.
 
 ### Performance metrics
 These are names and descriptions of [Prometheus](https://prometheus.io/) metrics collected by the controllers:
-- **`vpno_mask_reconcile_counter`**: Number of reconciliations by the `Mask` controller.
-- **`vpno_mask_action_counter`**: Number of actions taken by the `Mask` controller.
-- **`vpno_mask_read_duration_seconds`**: Amount of time taken by the read phase of the `Mask` controller.
-- **`vpno_mask_write_duration_seconds`**: Amount of time taken by the write phase of the `Mask` controller.
-- **`vpno_provider_reconcile_counter`**: Number of reconciliations by the `MaskProvider` controller.
-- **`vpno_provider_action_counter`**: Number of actions taken by the `MaskProvider` controller.
-- **`vpno_provider_read_duration_seconds`**: Amount of time taken by the read phase of the `MaskProvider` controller.
-- **`vpno_provider_write_duration_seconds`**: Amount of time taken by the write phase of the `MaskProvider` controller.
+- **`vpno_masks_reconcile_counter`**: Number of reconciliations by the `Mask` controller.
+- **`vpno_masks_action_counter`**: Number of actions taken by the `Mask` controller.
+- **`vpno_masks_read_duration_seconds`**: Amount of time taken by the read phase of the `Mask` controller.
+- **`vpno_masks_write_duration_seconds`**: Amount of time taken by the write phase of the `Mask` controller.
+- **`vpno_providers_reconcile_counter`**: Number of reconciliations by the `MaskProvider` controller.
+- **`vpno_providers_action_counter`**: Number of actions taken by the `MaskProvider` controller.
+- **`vpno_providers_read_duration_seconds`**: Amount of time taken by the read phase of the `MaskProvider` controller.
+- **`vpno_providers_write_duration_seconds`**: Amount of time taken by the write phase of the `MaskProvider` controller.
+- **`vpno_reservations_reconcile_counter`**: Number of reconciliations by the `MaskReservation` controller.
+- **`vpno_reservations_action_counter`**: Number of actions taken by the `MaskReservation` controller.
+- **`vpno_reservations_read_duration_seconds`**: Amount of time taken by the read phase of the `MaskReservation` controller.
+- **`vpno_reservations_write_duration_seconds`**: Amount of time taken by the write phase of the `MaskReservation` controller.
+- **`vpno_consumers_reconcile_counter`**: Number of reconciliations by the `MaskConsumer` controller.
+- **`vpno_consumers_action_counter`**: Number of actions taken by the `MaskConsumer` controller.
+- **`vpno_consumers_read_duration_seconds`**: Amount of time taken by the read phase of the `MaskConsumer` controller.
+- **`vpno_consumers_write_duration_seconds`**: Amount of time taken by the write phase of the `MaskConsumer` controller.
 - **`vpno_http_requests_total`**: Number of HTTP requests made to the metrics server.
 - **`vpno_http_response_size_bytes`**: Metrics server HTTP response sizes in bytes.
 - **`vpno_http_request_duration_seconds`**: Metrics server HTTP request latencies in seconds.
 
 ### Scaling
-While the controller code is fully capable of concurrent reconciliations, scaling is not as simple as increasing the number of replicas in the deployments. I have ideas for how to scale horizontally, so please open an issue if you encounter problems scaling vertically.
+While the controller code is fully capable of concurrent reconciliations, scaling is not as simple as increasing the number of replicas in the deployments. I have ideas for how to scale horizontally, so please open an issue if you encounter problems scaling vertically. Vertical scaling should be sufficient for at least a few hundred concurrent `Mask` resources.
 
 ### Custom Resource Definitions (CRDs)
 The [CRDs](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/) for [`Mask`](crds/vpn.beebs.dev_mask_crd.yaml) and [`MaskProvider`](crds/vpn.beebs.dev_maskprovider_crd.yaml) are generated by [`kube-rs/kube`](https://github.com/kube-rs/kube) and include their comments from the [surrounding code](types/src/types.rs). You can view the field descriptions with `kubectl`:
 ```bash
-kubectl get crd maskproviders.vpn.beebs.dev -o yaml
 kubectl get crd masks.vpn.beebs.dev -o yaml
+kubectl get crd maskproviders.vpn.beebs.dev -o yaml
+kubectl get crd maskconsumers.vpn.beebs.dev -o yaml
+kubectl get crd maskreservations.vpn.beebs.dev -o yaml
 ```
 
 ### Uninstallation
@@ -287,8 +308,10 @@ helm delete -n vpn vpn
 kubectl delete namespace vpn
 
 # Delete the Custom Resource Definitions.
-kubectl delete crd maskproviders.vpn.beebs.dev
 kubectl delete crd masks.vpn.beebs.dev
+kubectl delete crd maskproviders.vpn.beebs.dev
+kubectl delete crd maskconsumers.vpn.beebs.dev
+kubectl delete crd maskreservations.vpn.beebs.dev
 ```
 
 ### Development

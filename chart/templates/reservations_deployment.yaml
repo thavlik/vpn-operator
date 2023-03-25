@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-reservations
+  labels:
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-reservations
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-reservations
+    spec:
+    {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+    {{- end }}
+      serviceAccountName: {{ .Release.Name }}-operator
+      containers:
+        - name: operator
+          command:
+            - /vpn-operator
+            - manage-reservations
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          image: {{ .Values.image }}
+      {{- if .Values.prometheus.exposed }}
+          env:
+            - name: METRICS_PORT
+              value: "8080"
+          ports:
+            - containerPort: 8080
+              name: metrics
+      {{- end }}
+          resources:
+{{ toYaml .Values.controllers.reservations.resources | indent 12 }}

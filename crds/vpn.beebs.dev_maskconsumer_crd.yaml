@@ -1,0 +1,108 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: maskconsumers.vpn.beebs.dev
+spec:
+  group: vpn.beebs.dev
+  names:
+    categories: []
+    kind: MaskConsumer
+    plural: maskconsumers
+    shortNames: []
+    singular: maskconsumer
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: PHASE
+      type: string
+    - jsonPath: .status.lastUpdated
+      name: AGE
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for MaskConsumerSpec via `CustomResource`
+        properties:
+          spec:
+            description: |-
+              [`MaskConsumerSpec`] describes the configuration for a [`MaskConsumer`] resource, which is used to garbage collect resources that consume VPN credentials when they are unassigned from a [`Mask`]. This resource will always have a `Mask` as its owner. It corresponds with a singular [`MaskReservation`] resource in the [`MaskProvider`]'s namespace, which reserves a slot with the provider.
+
+              The [`MaskConsumer`] is the first resource to be allocated during assignment. Once a [`MaskProvider`] has been assigned to [`MaskConsumerStatus::provider`], the controller will update the [`MaskStatus::consumer`] to point to the [`MaskConsumer`]. This order is important because the [`MaskReservation`] reserving the slot will be garbage collected if the [`MaskConsumer`] doesn't exist.
+
+              [`MaskConsumer`] resources are created by the controller. Any resources that consume VPN credentials should have an owner reference to it - either directly or indirectly through one of its parents - that way any connections to the service will be guaranteed severed before the slot is reprovisioned. This paradigm allows garbage collection to be agnostic to how credentials are consumed.
+            properties:
+              providers:
+                description: List of desired providers, inherited from the parent [`MaskSpec::providers`].
+                items:
+                  type: string
+                nullable: true
+                type: array
+            type: object
+          status:
+            description: Status object for the [`MaskConsumer`] resource.
+            nullable: true
+            properties:
+              lastUpdated:
+                description: Timestamp of when the [`MaskConsumerStatus`] object was last updated.
+                nullable: true
+                type: string
+              message:
+                description: A human-readable message indicating details about why the [`MaskConsumer`] is in this phase.
+                nullable: true
+                type: string
+              phase:
+                description: A short description of the [`MaskConsumer`] resource's current state.
+                enum:
+                - Pending
+                - Waiting
+                - Active
+                - Terminating
+                - ErrNoProviders
+                nullable: true
+                type: string
+              pod:
+                description: Name of the Pod that is consuming the credentials.
+                nullable: true
+                type: string
+              provider:
+                description: Details about the assigned provider and credentials.
+                nullable: true
+                properties:
+                  name:
+                    description: Name of the assigned [`MaskProvider`] resource.
+                    type: string
+                  namespace:
+                    description: Namespace of the assigned [`MaskProvider`] resource.
+                    type: string
+                  reservation:
+                    description: UID of the corresponding [`MaskReservation`] resource. This is effectively a cross-namespace owner reference, enforced via finalizers.
+                    type: string
+                  secret:
+                    description: Name of the [`Secret`](k8s_openapi::api::core::v1::Secret) resource which contains environment variables to be injected into a [gluetun](https://github.com/qdm12/gluetun) container. The controller will create this in the same namespace as the [`Mask`] resource. Its contents mirror that of the [`Secret`](k8s_openapi::api::core::v1::Secret) referenced by [`MaskProviderSpec::secret`].
+                    type: string
+                  slot:
+                    description: Slot index assigned to this [`Mask`]. This value must be less than [`MaskProviderSpec::max_slots`], and is used to index the [`MaskReservation`] that reserves the slot.
+                    format: uint
+                    minimum: 0.0
+                    type: integer
+                  uid:
+                    description: UID of the assigned [`MaskProvider`] resource. Used to ensure the reference is valid in case the [`MaskProvider`] is deleted and quickly recreated with the same name.
+                    type: string
+                required:
+                - name
+                - namespace
+                - reservation
+                - secret
+                - slot
+                - uid
+                type: object
+            type: object
+        required:
+        - spec
+        title: MaskConsumer
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

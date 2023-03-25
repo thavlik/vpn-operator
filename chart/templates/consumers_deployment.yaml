@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-consumers
+  labels:
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-consumers
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-consumers
+    spec:
+    {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+    {{- end }}
+      serviceAccountName: {{ .Release.Name }}-operator
+      containers:
+        - name: operator
+          command:
+            - /vpn-operator
+            - manage-consumers
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          image: {{ .Values.image }}
+      {{- if .Values.prometheus.exposed }}
+          env:
+            - name: METRICS_PORT
+              value: "8080"
+          ports:
+            - containerPort: 8080
+              name: metrics
+      {{- end }}
+          resources:
+{{ toYaml .Values.controllers.consumers.resources | indent 12 }}

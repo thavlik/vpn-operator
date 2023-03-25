@@ -3,18 +3,18 @@ use const_format::concatcp;
 use lazy_static::lazy_static;
 use prometheus::{register_counter_vec, register_histogram_vec, CounterVec, HistogramVec};
 
-const MASK_METRICS_PREFIX: &str = concatcp!(METRICS_PREFIX, "mask_");
+const MASK_METRICS_PREFIX: &str = concatcp!(METRICS_PREFIX, "masks_");
 
 lazy_static! {
     pub static ref MASK_RECONCILE_COUNTER: CounterVec = register_counter_vec!(
         concatcp!(MASK_METRICS_PREFIX, "reconcile_counter"),
-        "Number of reconciliations by the mask controller.",
+        "Number of reconciliations by the Mask controller.",
         &["name", "namespace"]
     )
     .unwrap();
     pub static ref MASK_ACTION_COUNTER: CounterVec = register_counter_vec!(
         concatcp!(MASK_METRICS_PREFIX, "action_counter"),
-        "Number of actions taken by the mask controller.",
+        "Number of actions taken by the Mask controller.",
         &["name", "namespace", "action"]
     )
     .unwrap();

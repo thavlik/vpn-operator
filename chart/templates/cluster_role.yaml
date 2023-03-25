@@ -8,7 +8,6 @@ rules:
   - apiGroups: [""]
     resources:
       - secrets
-      - configmaps
       - pods
     verbs:
       - get
@@ -18,6 +17,10 @@ rules:
       - watch
   - apiGroups: ["vpn.beebs.dev"]
     resources:
+      - maskconsumers
+      - maskconsumers/status
+      - maskreservations
+      - maskreservations/status
       - maskproviders
       - maskproviders/status
       - masks
@@ -30,6 +33,10 @@ rules:
       - watch
   - apiGroups: ["vpn.beebs.dev"]
     resources:
+      - maskconsumers
+      - maskconsumers/status
+      - maskreservations
+      - maskreservations/status
       - masks
       - masks/status
     verbs:

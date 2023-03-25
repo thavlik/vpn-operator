@@ -1,4 +1,4 @@
-use crate::util::{deep_merge, patch::*, Error, MANAGER_NAME, VERIFICATION_LABEL};
+use crate::util::{deep_merge, messages, patch::*, Error, MANAGER_NAME, VERIFICATION_LABEL};
 use const_format::concatcp;
 use k8s_openapi::{
     api::core::v1::{
@@ -8,7 +8,7 @@ use k8s_openapi::{
     apimachinery::pkg::apis::meta::v1::Time,
 };
 use kube::{
-    api::{Api, DeleteParams, ListParams, ObjectMeta, Resource},
+    api::{Api, ObjectMeta, Resource},
     Client,
 };
 use lazy_static::lazy_static;
@@ -147,7 +147,7 @@ lazy_static! {
 /// the resource made its initial appearance to the operator.
 pub async fn pending(client: Client, instance: &MaskProvider) -> Result<(), Error> {
     patch_status(client, instance, |status| {
-        status.message = Some("Resource first appeared to the controller.".to_owned());
+        status.message = Some(messages::PENDING.to_owned());
         status.phase = Some(MaskProviderPhase::Pending);
     })
     .await?;
@@ -182,6 +182,16 @@ pub async fn active(
     Ok(())
 }
 
+/// Updates the `MaskProvider`'s phase to Terminating.
+pub async fn terminating(client: Client, instance: &MaskProvider) -> Result<(), Error> {
+    patch_status(client, instance, |status| {
+        status.phase = Some(MaskProviderPhase::Terminating);
+        status.message = Some("Resource deletion is pending garbage collection.".to_owned());
+    })
+    .await?;
+    Ok(())
+}
+
 /// Updates the MaskProvider's phase to ErrSecretNotFound, which indicates
 /// the VPN provider is ready to use.
 pub async fn secret_missing(
@@ -195,34 +205,6 @@ pub async fn secret_missing(
     })
     .await?;
     Ok(())
-}
-
-/// Lists all Mask resource that are not pending deletion.
-async fn list_masks(client: Client) -> Result<Vec<Mask>, Error> {
-    let api: Api<Mask> = Api::all(client);
-    Ok(api
-        .list(&ListParams::default())
-        .await?
-        .into_iter()
-        .filter(|p| p.metadata.deletion_timestamp.is_none())
-        .collect())
-}
-
-/// Returns true if the Mask resource is assigned this MaskProvider.
-fn mask_uses_provider(name: &str, namespace: &str, uid: &str, mask: &Mask) -> bool {
-    match mask
-        .status
-        .as_ref()
-        .map_or(None, |status| status.provider.as_ref())
-    {
-        // Mask is assigned a MaskProvider.
-        Some(provider) => {
-            // Check if the assigned MaskProvider matches the given one.
-            provider.name == name && provider.namespace == namespace && provider.uid == uid
-        }
-        // Mask is not assigned a MaskProvider.
-        _ => false,
-    }
 }
 
 /// Update the status object to show the verification is in progress.
@@ -253,33 +235,6 @@ pub async fn verify_failed(
     })
     .await?;
     Ok(())
-}
-
-/// Deletes the verification Pod.
-pub async fn delete_verify_pod(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
-    let api: Api<Pod> = Api::namespaced(client, namespace);
-    match api.delete(name, &DeleteParams::default()).await {
-        // Pod was deleted.
-        Ok(_) => Ok(()),
-        // Pod does not exist.
-        Err(kube::Error::Api(e)) if e.code == 404 => Ok(()),
-        // Error deleting Pod.
-        Err(e) => Err(e.into()),
-    }
-}
-
-/// Deletes the verification Mask.
-pub async fn delete_verify_mask(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
-    let api: Api<Mask> = Api::namespaced(client, namespace);
-    let name = get_verify_mask_name(name);
-    match api.delete(&name, &DeleteParams::default()).await {
-        // Pod was deleted.
-        Ok(_) => Ok(()),
-        // Pod does not exist.
-        Err(kube::Error::Api(e)) if e.code == 404 => Ok(()),
-        // Error deleting Pod.
-        Err(e) => Err(e.into()),
-    }
 }
 
 /// Merges the container spec with the given overrides.
@@ -345,7 +300,9 @@ pub fn get_verify_mask_name(name: &str) -> String {
     format!("{}-verify", name)
 }
 
-/// Labels for the verification Mask resource.
+/// Labels for the verification `Mask` resource, used to force
+/// the controller to assign a `MaskProvider` with a specific uid
+/// to the child `MaskConsumer`.
 fn verify_mask_labels(instance: &MaskProvider) -> BTreeMap<String, String> {
     let mut labels: BTreeMap<String, String> = BTreeMap::new();
     // Add a label to the Mask so that we can easily find it.
@@ -371,6 +328,8 @@ fn verify_mask(name: &str, namespace: &str, instance: &MaskProvider) -> Mask {
             ..Default::default()
         },
         spec: MaskSpec {
+            // Note: `providers` is omitted because we use the labels to constrain
+            // the controller to assign a specific MaskProvider.
             ..Default::default()
         },
         ..Default::default()
@@ -383,7 +342,7 @@ fn verify_pod(
     namespace: &str,
     instance: &MaskProvider,
     secret: &Secret,
-    mask: &Mask,
+    consumer: &MaskConsumer,
 ) -> Result<Pod, Error> {
     let overrides = instance
         .spec
@@ -410,9 +369,10 @@ fn verify_pod(
                 labels.insert("app".to_owned(), MANAGER_NAME.to_owned());
                 labels
             }),
-            // Setting the Mask as the owner will allow the phase
-            // to properly update as Active when the Pod exists.
-            owner_references: Some(vec![mask.controller_owner_ref(&()).unwrap()]),
+            // Setting the MaskConsumer as the owner will allow the
+            // pod to be properly garbage collected when the provider
+            // is unassigned from the Mask.
+            owner_references: Some(vec![consumer.controller_owner_ref(&()).unwrap()]),
             ..Default::default()
         },
         spec: Some(PodSpec {
@@ -471,70 +431,68 @@ pub async fn create_verify_pod(
     name: &str,
     namespace: &str,
     instance: &MaskProvider,
-    mask: &Mask,
+    consumer: &MaskConsumer,
 ) -> Result<Pod, Error> {
+    // Extract the assigned provider from the status object.
+    let assigned_provider = consumer
+        .status
+        .as_ref()
+        .map_or(None, |s| s.provider.as_ref())
+        .ok_or_else(|| {
+            // This shouldn't happen under normal conditions because
+            // this action shouldn't be called unless the the consumer
+            // has already been assigned a provider.
+            Error::UserInputError("MaskConsumer is not assigned to a MaskProvider".to_owned())
+        })?;
+
+    // Sanity check: make sure the the assigned provider matches the one we're verifying.
+    if instance
+        .metadata
+        .uid
+        .as_deref() != Some(&assigned_provider.uid)
+    {
+        return Err(Error::UserInputError(format!(
+            "MaskConsumer is assigned to a different MaskProvider. Got {}, expected {}.",
+            assigned_provider.uid,
+            instance.metadata.uid.as_deref().unwrap(),
+        )));
+    }
+
     // Get the VPN credentials secret so we know which keys
-    // to inject into the VPN container's environment.
+    // to inject into the VPN container's environment. The secret
+    // has a unique name so there's no need to check its UID.
     let secret_api: Api<Secret> = Api::namespaced(client.clone(), namespace);
-    let secret = secret_api.get(&instance.spec.secret).await?;
+    let secret = secret_api.get(&assigned_provider.secret).await?;
 
     // Create the pod, honoring overrides in the MaskProvider spec.
-    let pod = verify_pod(name, namespace, instance, &secret, mask)?;
+    let pod = verify_pod(name, namespace, instance, &secret, consumer)?;
     let pod_api: Api<Pod> = Api::namespaced(client, namespace);
     Ok(pod_api.create(&Default::default(), &pod).await?)
 }
 
-/// Unassigns all Mask resources that are assigned to this MaskProvider.
-pub async fn unassign_all(
-    client: Client,
-    name: &str,
-    namespace: &str,
-    instance: &MaskProvider,
-) -> Result<(), Error> {
-    // List all Mask resources.
-    let uid = instance.metadata.uid.as_deref().unwrap();
-    for mask in list_masks(client.clone())
-        .await?
-        .into_iter()
-        .filter(|mask| mask_uses_provider(name, namespace, uid, &mask))
-    {
-        // Unassign this provider in the Mask status object.
-        // Reconciliation will trigger a new assignment.
-        patch_status(client.clone(), &mask, |status| {
-            status.provider = None;
-            status.message = Some("MaskProvider was unassigned upon its deletion.".to_owned());
-            status.phase = Some(MaskPhase::Waiting);
-        })
-        .await?;
-
-        // Garbage collect the Secret that was created for this Mask.
-        delete_mask_secret(client.clone(), &mask, instance).await?;
+/// Deletes the verification Pod.
+pub async fn delete_verify_pod(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
+    let api: Api<Pod> = Api::namespaced(client, namespace);
+    match api.delete(name, &Default::default()).await {
+        // Pod was deleted.
+        Ok(_) => Ok(()),
+        // Pod does not exist.
+        Err(kube::Error::Api(e)) if e.code == 404 => Ok(()),
+        // Error deleting Pod.
+        Err(e) => Err(e.into()),
     }
-
-    Ok(())
 }
 
-/// Delete the credentials env Secret for the Mask.
-pub async fn delete_mask_secret(
-    client: Client,
-    mask: &Mask,
-    provider: &MaskProvider,
-) -> Result<(), Error> {
-    // Because the Secret's name is based on the uid, we don't have
-    // to check its labels to make sure it belongs to the MaskProvider.
-    let secret_name = format!(
-        "{}-{}",
-        mask.metadata.name.as_deref().unwrap(),
-        provider.metadata.uid.as_deref().unwrap(),
-    );
-    let api: Api<Secret> = Api::namespaced(client, mask.metadata.namespace.as_deref().unwrap());
-    match api.delete(&secret_name, &DeleteParams::default()).await {
-        // Secret was deleted.
+/// Deletes the verification Mask.
+pub async fn delete_verify_mask(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
+    let api: Api<Mask> = Api::namespaced(client, namespace);
+    let name = get_verify_mask_name(name);
+    match api.delete(&name, &Default::default()).await {
+        // Pod was deleted.
         Ok(_) => Ok(()),
-        // Secret does not exist. This could happen if it was
-        // deleted by the Mask controller.
+        // Pod does not exist.
         Err(kube::Error::Api(e)) if e.code == 404 => Ok(()),
-        // Error deleting Secret.
+        // Error deleting Pod.
         Err(e) => Err(e.into()),
     }
 }

@@ -1,20 +1,15 @@
 use chrono::Utc;
 use futures::stream::StreamExt;
-use k8s_openapi::api::core::v1::{Pod, Secret};
-use kube::Resource;
-use kube::ResourceExt;
 use kube::{
     api::ListParams, client::Client, runtime::controller::Action, runtime::Controller, Api,
+    ResourceExt,
 };
 use std::sync::Arc;
 use tokio::time::Duration;
 use vpn_types::*;
 
-use super::{
-    actions::{self, owns_reservation},
-    finalizer,
-};
-use crate::util::{Error, PROBE_INTERVAL};
+use super::{actions, finalizer, util::get_consumer};
+use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
 
 #[cfg(feature = "metrics")]
 use super::metrics;
@@ -34,8 +29,7 @@ pub async fn run(client: Client) -> Result<(), Error> {
     // - `reconcile` function with reconciliation logic to be called each time a resource of `Mask` kind is created/updated/deleted,
     // - `on_error` function to call whenever reconciliation fails.
     Controller::new(crd_api, ListParams::default())
-        .owns(Api::<Secret>::all(client.clone()), ListParams::default())
-        .owns(Api::<Pod>::all(client), ListParams::default())
+        .owns(Api::<MaskConsumer>::all(client), ListParams::default())
         .run(reconcile, on_error, context)
         .for_each(|_reconciliation_result| async move {
             //match reconciliation_result {
@@ -73,16 +67,22 @@ impl ContextData {
 enum MaskAction {
     /// Set the Mask's phase to Pending.
     Pending,
-    /// Assign the Mask a VPN provider.
-    Assign,
+
+    /// Create a MaskConsumer to manage the provider assignment.
+    CreateConsumer,
+
     /// Delete all subresources.
     Delete,
-    /// Create the credentials secret for the Mask.
-    CreateSecret,
-    /// Signals the Mask is ready to be used.
-    Ready,
-    /// Signals that there are Pods using the Mask.
-    Active { pod_name: String },
+
+    /// Signals that the MaskConsumer is Waiting.
+    Waiting,
+
+    /// Signals that the Mask is actively consuming VPN credentials.
+    Active,
+
+    /// Signals that the MaskConsumer was unable to be assigned a provider.
+    ErrNoProviders,
+
     /// The Mask resource is in desired state and requires no actions to be taken.
     NoOp,
 }
@@ -91,29 +91,26 @@ impl MaskAction {
     fn to_str(&self) -> &str {
         match self {
             MaskAction::Pending => "Pending",
-            MaskAction::Assign => "Assign",
+            MaskAction::CreateConsumer => "CreateConsumer",
             MaskAction::Delete => "Delete",
-            MaskAction::CreateSecret => "CreateSecret",
-            MaskAction::Ready => "Ready",
-            MaskAction::Active { .. } => "Active",
+            MaskAction::Waiting => "Waiting",
+            MaskAction::Active => "Active",
+            MaskAction::ErrNoProviders => "ErrNoProviders",
             MaskAction::NoOp => "NoOp",
         }
     }
+}
+
+/// Returns true if the MaskConsumer is missing the finalizer.
+fn needs_finalizer(instance: &Mask) -> bool {
+    !instance.finalizers().iter().any(|f| f == FINALIZER_NAME)
 }
 
 /// needs_pending returns true if the `Mask` resource
 /// requires a status update to set the phase to Pending.
 /// This should be the first action for any managed resource.
 fn needs_pending(instance: &Mask) -> bool {
-    instance.status.is_none() || instance.status.as_ref().unwrap().phase.is_none()
-}
-
-/// Returns the Mask's assigned provider from its status object.
-fn get_assigned_provider(instance: &Mask) -> Option<&AssignedProvider> {
-    match instance.status {
-        None => None,
-        Some(ref status) => status.provider.as_ref(),
-    }
+    needs_finalizer(instance) || instance.status.as_ref().map_or(true, |s| s.phase.is_none())
 }
 
 /// Reconciliation function for the `Mask` resource.
@@ -186,36 +183,18 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
     // This is the write phase of reconciliation.
     let result = match action {
         MaskAction::Pending => {
-            // Update the phase of the `MaskProvider` resource to Pending.
+            // Add the finalizer to the Mask resource.
+            let instance = finalizer::add(client.clone(), &name, &namespace).await?;
+
+            // Update the phase of the `Mask` resource to Pending.
             actions::pending(client, &instance).await?;
 
             // Requeue immediately.
             Action::requeue(Duration::ZERO)
         }
-        MaskAction::Assign => {
-            // Remove any current provider from the Mask's status object.
-            // Note: this will not delete the reservation ConfigMap.
-            actions::unassign_provider(client.clone(), &name, &namespace, &instance).await?;
-
-            // Add a finalizer so that the Mask resource is not deleted before
-            // the reservation ConfigMap and credentials secret are deleted.
-            let instance = finalizer::add(client.clone(), &name, &namespace).await?;
-
-            // Assign a new provider to the Mask.
-            if !actions::assign_provider(client.clone(), &name, &namespace, &instance).await? {
-                // Failed to assign a provider. Wait a bit and retry.
-                return Ok(Action::requeue(PROBE_INTERVAL));
-            }
-
-            // Requeue immediately to set the phase to "Active".
-            Action::requeue(Duration::ZERO)
-        }
         MaskAction::Delete => {
-            // Delete the reservation ConfigMap from the MaskProvider's namespace.
-            actions::delete_reservation(client.clone(), &name, &namespace, &instance).await?;
-
-            // Delete the credentials secret from the Mask's namespace.
-            actions::delete_secret(client.clone(), &namespace, &instance).await?;
+            // Note: we don't need to manually delete the MaskConsumer resource.
+            // Kubernetes will delete it automatically because of the owner reference.
 
             // Remove the finalizer, which will allow the Mask resource to be deleted.
             finalizer::delete(client, &name, &namespace).await?;
@@ -223,26 +202,36 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             // Makes no sense to requeue after deleting, as the resource is gone.
             Action::await_change()
         }
-        MaskAction::Ready => {
+        MaskAction::Waiting => {
+            // Update the phase to Waiting.
+            actions::waiting(client, &instance).await?;
+
+            // Try again after a short delay.
+            Action::requeue(PROBE_INTERVAL)
+        }
+        MaskAction::Active => {
             // Update the phase to Active.
-            actions::ready(client.clone(), &instance).await?;
+            actions::active(client, &instance).await?;
 
             // Resource is fully reconciled.
             Action::requeue(PROBE_INTERVAL)
         }
-        MaskAction::Active { pod_name } => {
-            // Update the phase to Active.
-            actions::active(client.clone(), &instance, &pod_name).await?;
+        MaskAction::CreateConsumer => {
+            // Immediately update the phase to Waiting.
+            actions::waiting(client.clone(), &instance).await?;
 
-            // Resource is fully reconciled.
+            // Create the MaskConsumer object that will manage provider assignment.
+            actions::create_consumer(client, &name, &namespace, &instance).await?;
+
+            // Requeue after a short delay to give the MaskConsumer time to reconcile.
             Action::requeue(PROBE_INTERVAL)
         }
-        MaskAction::CreateSecret => {
-            // Create the credentials env secret in the Mask's namespace.
-            actions::create_secret(client.clone(), &namespace, &instance).await?;
+        MaskAction::ErrNoProviders => {
+            // Reflect the error in the status object.
+            actions::err_no_providers(client, &instance).await?;
 
-            // Requeue immediately to set the phase to Active.
-            Action::requeue(Duration::ZERO)
+            // Requeue after a short delay to allow time for a valid MaskProvider to appear.
+            Action::requeue(PROBE_INTERVAL)
         }
         // The resource is already in desired state, do nothing and re-check after 10 seconds
         MaskAction::NoOp => Action::requeue(PROBE_INTERVAL),
@@ -274,71 +263,19 @@ pub fn get_mask_phase(instance: &Mask) -> Result<(MaskPhase, Duration), Error> {
     Ok((phase, age.to_std()?))
 }
 
-/// Gets the Secret that contains the credentials for the Mask.
-/// Even if the Secret exists, this may still return None if
-/// the Secret's provider label doesn't match the expected uid.
-async fn get_secret(
-    client: Client,
-    name: &str,
-    namespace: &str,
-    provider: &AssignedProvider,
-) -> Result<Option<Secret>, Error> {
-    let api: Api<Secret> = Api::namespaced(client, namespace);
-    // Because the Secret's name includese the uid, we don't
-    // have the to check the resource labels for a match.
-    let secret_name = format!("{}-{}", name, &provider.uid);
-    match api.get(&secret_name).await {
-        Ok(secret) => Ok(Some(secret)),
-        Err(kube::Error::Api(ae)) if ae.code == 404 => Ok(None),
-        Err(e) => Err(e.into()),
-    }
-}
-
-/// Determines the action given that the provider has been assigned.
-async fn determine_provider_action(
-    client: Client,
-    name: &str,
-    namespace: &str,
-    instance: &Mask,
-    provider: &AssignedProvider,
-) -> Result<Option<MaskAction>, Error> {
-    // Ensure that the ConfigMap reserving the connection with the MaskProvider exists.
-    // If the ConfigMap no longer exists, we need to immediately remove the
-    // current provider from the Mask status and assign a new one.
-    if !owns_reservation(client.clone(), name, namespace, instance).await? {
-        return Ok(Some(MaskAction::Assign));
-    }
-
-    // Ensure the Secret containing the env credentials exists.
-    // The Secret should exist in the same namespace as the Mask.
-    if get_secret(client, name, namespace, provider)
-        .await?
-        .is_none()
-    {
-        // The Mask has reserved a connection with the MaskProvider,
-        // but for some reason the secret doesn't exist.
-        return Ok(Some(MaskAction::CreateSecret));
-    }
-
-    // Both the ConfigMap reserving the connection and the secret
-    // containing the env credentials exist, so the Mask is in
-    // the desired state.
-    Ok(None)
-}
-
 /// Resources arrives into reconciliation queue in a certain state. This function looks at
 /// the state of given `Mask` resource and decides which actions needs to be performed.
 /// The finite set of possible actions is represented by the `MaskAction` enum.
 ///
 /// # Arguments
-/// - `mask`: A reference to `Mask` being reconciled to decide next action upon.
+/// - `instance`: A reference to `Mask` being reconciled to decide next action upon.
 async fn determine_action(
     client: Client,
-    name: &str,
-    namespace: &str,
+    _name: &str,
+    _namespace: &str,
     instance: &Mask,
 ) -> Result<MaskAction, Error> {
-    if instance.meta().deletion_timestamp.is_some() {
+    if instance.metadata.deletion_timestamp.is_some() {
         return Ok(MaskAction::Delete);
     }
 
@@ -349,60 +286,57 @@ async fn determine_action(
         return Ok(MaskAction::Pending);
     }
 
-    // Get the assigned provider details from the status.
-    let provider = match get_assigned_provider(instance) {
-        // MaskProvider has not been assigned yet.
-        None => return Ok(MaskAction::Assign),
-        // MaskProvider has already been assigned.
-        Some(provider) => provider,
+    // Get the child MaskConsumer resource that will manage provider
+    // assignment and be deleted whenever the provider is unassigned.
+    let consumer = match get_consumer(client.clone(), instance).await? {
+        // MaskConsumer has not been created yet.
+        None => return Ok(MaskAction::CreateConsumer),
+        // MaskConsumer has already been created.
+        Some(consumer) => consumer,
     };
 
-    // Determine if we need to take an action given that the Mask
-    // resource has been assigned a VPN provider.
-    if let Some(action) =
-        determine_provider_action(client.clone(), name, namespace, instance, provider).await?
-    {
-        return Ok(action);
-    }
-
-    // Keep the Ready/Active status up-to-date.
-    determine_status_action(client, instance).await
+    // Keep the status object synchronized with the MaskConsumer's status.
+    determine_status_action(instance, &consumer)
 }
 
-/// Returns the Pod owned by the Mask. Pods using Masks can be
-/// configured to use the Mask as the owner, resulting in the Pod's
-/// deletion if the Mask is ever deleted. It also allows the Mask
-/// controller the ability to determine if a Mask is in use.
-async fn get_owned_pod(client: Client, instance: &Mask) -> Result<Option<Pod>, Error> {
-    let owner_uid = instance.metadata.uid.as_deref().unwrap();
-    let pod_api: Api<Pod> =
-        Api::namespaced(client, instance.metadata.namespace.as_deref().unwrap());
-    Ok(pod_api
-        .list(&ListParams::default())
-        .await?
-        .into_iter()
-        .filter(|p| {
-            p.metadata
-                .owner_references
-                .as_ref()
-                .map_or(false, |or| or.iter().any(|r| r.uid == owner_uid))
-        })
-        .next())
+/// Helper function used to run an action if the phase of the `Mask`
+/// doesn't match the desired value or if the status object is stale.
+fn recent_status(instance: &Mask, phase: MaskPhase, action: MaskAction) -> MaskAction {
+    let (cur_phase, age) = get_mask_phase(instance).unwrap();
+    if cur_phase != phase || age > PROBE_INTERVAL {
+        action
+    } else {
+        MaskAction::NoOp
+    }
 }
 
 /// Determines the action given that the only thing left to do
-/// is periodically keeping the Ready/Active phase up-to-date.
-async fn determine_status_action(client: Client, instance: &Mask) -> Result<MaskAction, Error> {
-    let (phase, age) = get_mask_phase(instance)?;
-    Ok(match get_owned_pod(client, instance).await? {
-        Some(owned_pod) if phase != MaskPhase::Active || age > PROBE_INTERVAL => {
-            MaskAction::Active {
-                pod_name: owned_pod.metadata.name.clone().unwrap(),
+/// is periodically keeping the phase in sync with the consumer.
+fn determine_status_action(instance: &Mask, consumer: &MaskConsumer) -> Result<MaskAction, Error> {
+    Ok(consumer
+        .status
+        .as_ref()
+        .map_or(None, |s| s.phase)
+        .map(|p| match p {
+            // Inherit Pending, Waiting, and Terminating phases as Waiting.
+            MaskConsumerPhase::Pending
+            | MaskConsumerPhase::Waiting
+            | MaskConsumerPhase::Terminating => {
+                recent_status(instance, MaskPhase::Waiting, MaskAction::Waiting)
             }
-        }
-        None if phase != MaskPhase::Ready || age > PROBE_INTERVAL => MaskAction::Ready,
-        _ => MaskAction::NoOp,
-    })
+            // Inherit the Active phase at a regular interval.
+            MaskConsumerPhase::Active => {
+                recent_status(instance, MaskPhase::Active, MaskAction::Active)
+            }
+            // No providers error, use the ErrNoProviders phase.
+            MaskConsumerPhase::ErrNoProviders => recent_status(
+                instance,
+                MaskPhase::ErrNoProviders,
+                MaskAction::ErrNoProviders,
+            ),
+        })
+        // If the MaskConsumer has no phase, do nothing.
+        .unwrap_or(MaskAction::NoOp))
 }
 
 /// Actions to be taken when a reconciliation fails - for whatever reason.

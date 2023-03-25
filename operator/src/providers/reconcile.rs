@@ -1,6 +1,6 @@
 use chrono::Utc;
 use futures::stream::StreamExt;
-use k8s_openapi::api::core::v1::{ConfigMap, Pod, PodStatus, Secret};
+use k8s_openapi::api::core::v1::{Pod, PodStatus, Secret};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::{
     api::ListParams, client::Client, runtime::controller::Action, runtime::Controller, Api,
@@ -15,7 +15,10 @@ use super::{
     actions::{self, get_verify_mask_name, PROBE_CONTAINER_NAME, VPN_CONTAINER_NAME},
     finalizer,
 };
-use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
+use crate::{
+    masks::util::get_consumer,
+    util::{Error, FINALIZER_NAME, PROBE_INTERVAL},
+};
 
 #[cfg(feature = "metrics")]
 use super::metrics;
@@ -35,7 +38,12 @@ pub async fn run(client: Client) -> Result<(), Error> {
     // - `reconcile` function with reconciliation logic to be called each time a resource of `MaskProvider` kind is created/updated/deleted,
     // - `on_error` function to call whenever reconciliation fails.
     Controller::new(crd_api, ListParams::default())
-        .owns(Api::<ConfigMap>::all(client.clone()), ListParams::default())
+        // The controller uses `MaskReservation` resources to reserve slots.
+        .owns(
+            Api::<MaskReservation>::all(client.clone()),
+            ListParams::default(),
+        )
+        // The controller uses a special `Mask` to verify the credentials.
         .owns(Api::<Mask>::all(client), ListParams::default())
         .run(reconcile, on_error, context)
         .for_each(|_reconciliation_result| async move {
@@ -78,9 +86,6 @@ enum MaskProviderAction {
     /// Set the `MaskProvider` resource status.phase to Pending.
     Pending,
 
-    /// Adds the finalizer to the `MaskProvider` resource.
-    AddFinalizer,
-
     /// Cleans up all subresources across all namespaces.
     Delete,
 
@@ -91,7 +96,7 @@ enum MaskProviderAction {
     CreateVerifyMask,
 
     /// Create a gluetun pod and verify that the external IP changes.
-    CreateVerifyPod(Mask),
+    CreateVerifyPod(MaskConsumer),
 
     /// Set the status to Verifying.
     Verifying {
@@ -119,7 +124,6 @@ impl MaskProviderAction {
     fn to_str(&self) -> &str {
         match self {
             MaskProviderAction::Pending => "Pending",
-            MaskProviderAction::AddFinalizer => "AddFinalizer",
             MaskProviderAction::Delete => "Delete",
             MaskProviderAction::SecretNotFound(_) => "SecretNotFound",
             MaskProviderAction::CreateVerifyMask => "CreateVerifyMask",
@@ -217,24 +221,10 @@ async fn reconcile(
             // Requeue immediately.
             Action::requeue(Duration::ZERO)
         }
-        MaskProviderAction::AddFinalizer => {
-            // Ensure the finalizer is present on the `MaskProvider` resource.
-            finalizer::add(client, &name, &namespace).await?;
-
-            // Requeue immediately.
-            Action::requeue(Duration::ZERO)
-        }
         MaskProviderAction::Delete => {
-            // Delete the verification Pod.
-            actions::delete_verify_pod(client.clone(), &name, &namespace).await?;
-
-            // Delete the verification Mask.
-            actions::delete_verify_mask(client.clone(), &name, &namespace).await?;
-
-            // Delete Secrets in namespaces that use this `MaskProvider`.
-            // This will prevent `Masks` from continuing to use the credentials
-            // assigned to them by this `MaskProvider`.
-            actions::unassign_all(client.clone(), &name, &namespace, &instance).await?;
+            // Update the phase to Terminating. This will prevent the provider
+            // from being assigned to new MaskConsumers.
+            actions::terminating(client.clone(), &instance).await?;
 
             // Remove the finalizer, which will allow the MaskProvider resource to be deleted.
             finalizer::delete(client, &name, &namespace).await?;
@@ -265,10 +255,10 @@ async fn reconcile(
             // Requeue after a short delay to allow the verification time to complete.
             Action::requeue(PROBE_INTERVAL)
         }
-        MaskProviderAction::CreateVerifyPod(mask) => {
+        MaskProviderAction::CreateVerifyPod(consumer) => {
             // Create the verification pod.
             let pod =
-                actions::create_verify_pod(client.clone(), &name, &namespace, &instance, &mask)
+                actions::create_verify_pod(client.clone(), &name, &namespace, &instance, &consumer)
                     .await?;
 
             // Indicate that verification is in progress.
@@ -349,7 +339,7 @@ async fn reconcile(
 /// requires a status update to set the phase to Pending.
 /// This should be the first action for any managed resource.
 fn needs_pending(instance: &MaskProvider) -> bool {
-    instance.status.is_none() || instance.status.as_ref().unwrap().phase.is_none()
+    needs_finalizer(instance) || instance.status.as_ref().map_or(true, |s| s.phase.is_none())
 }
 
 /// Returns the phase of the MaskProvider.
@@ -394,7 +384,7 @@ fn needs_finalizer(instance: &MaskProvider) -> bool {
 /// The finite set of possible actions is represented by the `MaskProviderAction` enum.
 ///
 /// # Arguments
-/// - `MaskProvider`: A reference to `MaskProvider` being reconciled to decide next action upon.
+/// - `instance`: A reference to `MaskProvider` being reconciled to decide next action upon.
 async fn determine_action(
     client: Client,
     name: &str,
@@ -408,16 +398,12 @@ async fn determine_action(
     // Ensure that the resource has a status object with a phase.
     // The rest of the controller code relies on the presence
     // of both these fields and will panic if they are not present.
+    // Also ensure the resource has a finalizer so child resources
+    // in other namespaces can be cleaned up before deletion.
     if needs_pending(instance) {
         // This should be the first action for any freshly created
         // MaskProvider resources. It will be immediately requeued.
         return Ok(MaskProviderAction::Pending);
-    }
-
-    // Ensure the resource has a finalizer so child resources
-    // in other namespaces can be cleaned up before deletion.
-    if needs_finalizer(instance) {
-        return Ok(MaskProviderAction::AddFinalizer);
     }
 
     // Ensure the MaskProvider credentials secret exists.
@@ -499,24 +485,36 @@ fn get_verify_timeout(instance: &MaskProvider) -> Duration {
 
 /// Determines the action given that the verification Mask is present
 /// and the Pod is not.
-fn determine_verify_mask_action(mask: Mask) -> Result<MaskProviderAction, Error> {
+async fn determine_verify_mask_action(
+    client: Client,
+    mask: &Mask,
+) -> Result<MaskProviderAction, Error> {
     Ok(match mask.status.as_ref().map_or(None, |s| s.phase) {
         // Controller is still processing the Mask.
         Some(MaskPhase::Pending) | None => MaskProviderAction::Verifying {
             start_time: None,
             message: "Waiting on the controller for the verification Mask.".to_owned(),
         },
-        // The Mask is ready to be used in the verification Pod.
-        // It should never be Active here, but if it, we know the
-        // Pod doesn't exist and we shouldn't be exceeding maxSlots.
-        Some(MaskPhase::Ready) | Some(MaskPhase::Active) => {
-            MaskProviderAction::CreateVerifyPod(mask)
-        }
         // The MaskProvider has too many active slots, we will have to wait.
         Some(MaskPhase::Waiting) => MaskProviderAction::Verifying {
             start_time: None,
             message: "Waiting for the verification Mask to be assigned a slot.".to_owned(),
         },
+        // The Mask is ready to be used by the verification Pod.
+        Some(MaskPhase::Active) => {
+            // Get the Mask's consumer, which manages provider assignment.
+            let consumer = match get_consumer(client.clone(), mask).await {
+                // Consumer doesn't exist yet, we will have to wait.
+                Ok(None) => return Ok(MaskProviderAction::NoOp),
+                // Consumer exists. Inspect its status object.
+                Ok(Some(consumer)) => consumer,
+                // Some unknown error.
+                Err(e) => return Err(e),
+            };
+
+            // Create the Pod owned by the MaskConsumer.
+            MaskProviderAction::CreateVerifyPod(consumer)
+        }
         // Unreachable branch: failed to assign the MaskProvider.
         Some(MaskPhase::ErrNoProviders) => MaskProviderAction::VerifyFailed(
             "Verification Mask observed unexpected ErrNoProviders.".to_owned(),
@@ -651,7 +649,7 @@ async fn determine_verify_action(
     // the spec's maxSlots.
     if let Some(mask) = get_verify_mask(client.clone(), name, namespace).await? {
         // Verification Mask exists. Examine its status object.
-        return Ok(Some(determine_verify_mask_action(mask)?));
+        return Ok(Some(determine_verify_mask_action(client, &mask).await?));
     }
 
     // Determine if we need to verify the credentials.
@@ -692,7 +690,7 @@ async fn count_reservations(
     let uid = instance.metadata.uid.as_deref().unwrap();
 
     // Count the ConfigMaps with the MaskProvider as the owner.
-    Ok(Api::<ConfigMap>::namespaced(client, namespace)
+    Ok(Api::<MaskReservation>::namespaced(client, namespace)
         .list(&ListParams::default())
         .await?
         .into_iter()

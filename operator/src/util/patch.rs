@@ -9,10 +9,13 @@ use std::{clone::Clone, fmt::Debug};
 use vpn_types::*;
 
 pub trait Object<S: Status> {
+    /// Returns a mutable reference to the status object.
+    /// Creates the status object if it does not exist with the default value.
     fn mut_status(&mut self) -> &mut S;
 }
 
 pub trait Status {
+    /// Sets the last updated timestamp to the given value.
     fn set_last_updated(&mut self, last_updated: String);
 }
 
@@ -43,6 +46,38 @@ impl Object<MaskProviderStatus> for MaskProvider {
 }
 
 impl Status for MaskProviderStatus {
+    fn set_last_updated(&mut self, last_updated: String) {
+        self.last_updated = Some(last_updated);
+    }
+}
+
+impl Object<MaskReservationStatus> for MaskReservation {
+    fn mut_status(&mut self) -> &mut MaskReservationStatus {
+        if self.status.is_some() {
+            return self.status.as_mut().unwrap();
+        }
+        self.status = Some(Default::default());
+        self.status.as_mut().unwrap()
+    }
+}
+
+impl Status for MaskReservationStatus {
+    fn set_last_updated(&mut self, last_updated: String) {
+        self.last_updated = Some(last_updated);
+    }
+}
+
+impl Object<MaskConsumerStatus> for MaskConsumer {
+    fn mut_status(&mut self) -> &mut MaskConsumerStatus {
+        if self.status.is_some() {
+            return self.status.as_mut().unwrap();
+        }
+        self.status = Some(Default::default());
+        self.status.as_mut().unwrap()
+    }
+}
+
+impl Status for MaskConsumerStatus {
     fn set_last_updated(&mut self, last_updated: String) {
         self.last_updated = Some(last_updated);
     }

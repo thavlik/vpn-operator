@@ -1,8 +1,10 @@
 use clap::{Parser, Subcommand};
 use kube::client::Client;
 
+mod consumers;
 mod masks;
 mod providers;
+mod reservations;
 mod util;
 
 #[cfg(feature = "metrics")]
@@ -11,85 +13,71 @@ mod metrics;
 #[cfg(test)]
 mod test;
 
+/// Top-level CLI configuration for the binary. Any command line
+/// flags should go in here.
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Command,
+
+    /// Prometheus metrics server scrape port. Disabled by default.
+    #[cfg(feature = "metrics")]
+    #[arg(long, env)]
+    metrics_port: Option<u16>,
 }
 
+/// List of subcommands for the binary. Clap will convert the
+/// name of each enum variant to kebab-case for the CLI.
+/// e.g. `ManageConsumers` becomes `manage-consumers`.
 #[derive(Subcommand)]
 enum Command {
-    ManageProviders,
+    ManageConsumers,
     ManageMasks,
+    ManageProviders,
+    ManageReservations,
 }
 
-/// Gets the prometheus metrics server port from the environment.
-#[cfg(feature = "metrics")]
-fn metrics_port() -> Option<u16> {
-    std::env::var("METRICS_PORT").ok().map(|s| {
-        s.parse()
-            .expect("failed to parse metrics port environment variable")
-    })
-}
-
-/// Runs the controller and the prometheus metrics server.
-#[cfg(feature = "metrics")]
-async fn run_with_metrics(client: Client, port: u16) {
-    tokio::join!(run_controller(client), metrics::run_server(port));
-}
-
-/// Runs just the controller by itself.
-async fn run_controller(client: Client) {
+/// Secondary entrypoint that runs the appropriate subcommand.
+async fn run(client: Client) {
     let cli = Cli::parse();
+
+    #[cfg(feature = "metrics")]
+    if let Some(metrics_port) = cli.metrics_port {
+        tokio::spawn(metrics::run_server(metrics_port));
+    }
+
     match cli.command {
-        Some(Command::ManageProviders) => providers::run(client).await.unwrap(),
-        Some(Command::ManageMasks) => masks::run(client).await.unwrap(),
-        None => {
-            println!("Please choose a subcommand.");
-            std::process::exit(1);
-        }
-    }
-    panic!("exited prematurely");
+        Command::ManageConsumers => consumers::run(client).await,
+        Command::ManageMasks => masks::run(client).await,
+        Command::ManageProviders => providers::run(client).await,
+        Command::ManageReservations => reservations::run(client).await,
+    }.unwrap();
+
+    panic!("exited unexpectedly");
 }
 
-/// General entrypoint when compiled with the prometheus metrics feature.
-#[cfg(feature = "metrics")]
-async fn run(client: Client) {
-    match metrics_port() {
-        // Only run the metrics server if the port is
-        // specified in the environment.
-        Some(port) => run_with_metrics(client, port).await,
-        // Use the default entrypoint.
-        None => run_controller(client).await,
-    }
-}
-
-/// General entrypoint when compiled without the prometheus metrics feature.
-#[cfg(not(feature = "metrics"))]
-async fn run(client: Client) {
-    run_controller(client).await;
-}
-
+/// Main entrypoint that sets up the environment before running the secondary entrypoint `run`.
 #[tokio::main]
 async fn main() {
     // Set the panic hook to exit the process with a non-zero exit code
-    // when a panic occurs on any thread.
+    // when a panic occurs on any thread. This is desired behavior when
+    // running in a container, as the metrics server or controller may
+    // panic and we always want to restart the container in that case.
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         default_panic(info);
         std::process::exit(1);
     }));
 
-    // First, a Kubernetes client must be obtained using the `kube` crate
-    // The client will later be moved to the custom controller
+    // Create a kubernetes client using the default configuration.
+    // In-cluster, the kubeconfig will be set by the service account.
     let client: Client = Client::try_default()
         .await
         .expect("Expected a valid KUBECONFIG environment variable.");
 
-    // Run the configured entrypoint. It depends on whether the
-    // operator was compiled with prometheus metrics enabled or not.
+    // Run the secondary entrypoint.
     run(client).await;
 
     // This is an unreachable branch. The controllers and metrics

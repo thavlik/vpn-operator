@@ -18,21 +18,21 @@ prometheus:
   # want to scrape the controller pods using another method.
   podMonitors: true
 
-# The Mask and MaskProvider resources have separate Deployments.
-# This improves scaling and allows you to configure their
-# resource budgets separately.
-# Note: the current values are not based on any empirical
+# Note: the resource limits are not based on any empirical
 # profiling. They are just a starting point and require
 # fine-tuning for future releases, but should be more than
 # enough for most scenarios.
 controllers:
+  # The Mask and MaskProvider resources have separate Deployments.
+  # This improves scaling and allows you to configure their
+  # resource budgets separately.
   masks:
     resources:
       requests:
         memory: 32Mi
         cpu: 10m
       limits:
-        memory: 128Mi
+        memory: 64Mi
         cpu: 100m
   providers:
     resources:
@@ -40,5 +40,30 @@ controllers:
         memory: 32Mi
         cpu: 10m
       limits:
-        memory: 128Mi
+        memory: 64Mi
+        cpu: 100m
+
+  # The MaskReservation controller is for garbage collection.
+  # It will delete any MaskReservations that point to MaskConsumers
+  # that no longer exist. You never create MaskReservations, the
+  # controller manages it automatically.
+  reservations:
+    resources:
+      requests:
+        memory: 32Mi
+        cpu: 10m
+      limits:
+        memory: 64Mi
+        cpu: 100m
+
+  # The MaskConsumer controller is used to assign MaskProviders
+  # to Masks and provide a way for any consuming resources to be
+  # deleted whenever the MaskProvider is unassigned.
+  consumers:
+    resources:
+      requests:
+        memory: 32Mi
+        cpu: 10m
+      limits:
+        memory: 64Mi
         cpu: 100m

@@ -136,6 +136,7 @@ spec:
                 - Verified
                 - Ready
                 - Active
+                - Terminating
                 - ErrSecretNotFound
                 - ErrVerifyFailed
                 nullable: true

@@ -2,6 +2,8 @@ use std::time::Duration;
 
 pub mod patch;
 
+pub(crate) mod messages;
+
 mod error;
 mod merge;
 

@@ -171,9 +171,7 @@ spec:
   #providers: ["my-vpn"]
 ```
 
-4. The controller will create a `MaskConsumer` resource with the same name/namespace as the `Mask` to manage provider assignment. Any `Pod`, `Job`, or whatever resource that make use of the assigned provider should carry a reference to the `MaskConsumer` (either directly in their `metadata.ownerReference` or indirectly through another owner object) so they will be deleted whenever the provider is unassigned.
-
-Wait for the `MaskConsumer`'s phase to be `Ready` before using it:
+4. The controller will create a `MaskConsumer` resource with the same name/namespace as the `Mask` to manage provider assignment. Any `Pod`, `Job`, or whatever resource that make use of the assigned provider should carry a reference to the `MaskConsumer` (either directly in their `metadata.ownerReference` or indirectly through another owner object) so they will be deleted whenever the provider is unassigned. Wait for the `MaskConsumer`'s phase to be `Ready` before using it:
 ```bash
 kubectl get maskconsumer -Aw
 ```

@@ -1,7 +1,12 @@
 apiVersion: v2
-description: Virtual Private Network operator
+description: Helm chart for vpn-operator
+keywords:
+  - vpn
+  - operator
+  - controller
+  - privacy
 name: vpn-operator
-version: 0.0.0
+version: 0.0.1
 maintainers:
   - name: Tom Havlik
     email: thavlik@protonmail.com

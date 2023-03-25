@@ -4,17 +4,25 @@ use kube::{
     api::{ListParams, ObjectMeta, Resource},
     client::Client,
     core::{NamespaceResourceScope, WatchEvent},
-    Api, CustomResourceExt, ResourceExt,
+    Api, CustomResourceExt,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::{clone::Clone, fmt::Debug};
-use tokio::spawn;
 use vpn_types::*;
 
-const MAX_SLOTS: usize = 1;
-const PROVIDER_NAME: &str = "test-provider";
-const MASK_NAME: &str = "test-mask";
-const NAMESPACE_PREFIX: &str = "vpn-test-";
+/// Maximum number of slots for the real VPN provider.
+pub const MAX_SLOTS: usize = 1;
+
+/// Base name of the test MaskProvider resource. The actual name will include
+/// a randomly generated UUID to distinguish it from other test providers.
+pub const PROVIDER_NAME: &str = "test-provider";
+
+/// Base name of the test Mask resource. If multiple Masks are used in a test,
+/// they will be named `test-mask-0`, `test-mask-1`, etc.
+pub const MASK_NAME: &str = "test-mask";
+
+/// Prefix of all test namespaces.
+pub const NAMESPACE_PREFIX: &str = "vpn-test-";
 
 /// All errors possible to occur during testing.
 #[derive(Debug, thiserror::Error)]
@@ -29,7 +37,11 @@ pub enum Error {
     Other(String),
 }
 
-async fn get_actual_provider_secret(client: Client) -> Result<Option<Secret>, Error> {
+/// Returns the Secret resource that contains actual VPN credentials
+/// when testing against external services. If the environment variables
+/// SECRET_NAME or SECRET_NAMESPACE are not set, this will return None,
+/// and the providers will skip verification.
+pub async fn get_actual_provider_secret(client: Client) -> Result<Option<Secret>, Error> {
     let name = match std::env::var("SECRET_NAME") {
         Ok(name) => name,
         Err(_) => return Ok(None),
@@ -46,7 +58,7 @@ async fn get_actual_provider_secret(client: Client) -> Result<Option<Secret>, Er
 /// If the environment specified a real secret, it will be used.
 /// This will also enable verification. Otherwise, mock credentials
 /// will be used and verificationwill be disabled.
-async fn get_test_provider_secret(
+pub async fn get_test_provider_secret(
     client: Client,
     provider: &MaskProvider,
 ) -> Result<Secret, Error> {
@@ -94,7 +106,7 @@ async fn get_test_provider_secret(
 
 /// Returns the test MaskProvider resource. If we are using mock credentials,
 /// verification will be disabled. Otherwise, verification will be enabled.
-async fn get_test_provider(
+pub async fn get_test_provider(
     client: Client,
     name: &str,
     namespace: &str,
@@ -128,7 +140,7 @@ async fn get_test_provider(
 }
 
 /// Returns a test Mask resource with the given slot as the name suffix.
-fn get_test_mask(namespace: &str, slot: usize, provider_label: &str) -> Mask {
+pub fn get_test_mask(namespace: &str, slot: usize, provider_label: &str) -> Mask {
     Mask {
         metadata: ObjectMeta {
             name: Some(format!("{}-{}", MASK_NAME, slot)),
@@ -144,7 +156,7 @@ fn get_test_mask(namespace: &str, slot: usize, provider_label: &str) -> Mask {
 }
 
 /// Create the test MaskProvider's credentials Secret resource.
-async fn create_test_provider_secret(
+pub async fn create_test_provider_secret(
     client: Client,
     namespace: &str,
     provider: &MaskProvider,
@@ -155,19 +167,12 @@ async fn create_test_provider_secret(
 }
 
 /// Creates the test MaskProvider and its secret.
-async fn create_test_provider(
+pub async fn create_test_provider(
     client: Client,
     namespace: &str,
     uid: &str,
 ) -> Result<MaskProvider, Error> {
     let name = format!("{}-{}", PROVIDER_NAME, uid);
-    //let provider = create_wait(
-    //    client.clone(),
-    //    &name,
-    //    namespace,
-    //    get_test_provider(client.clone(), &name, namespace).await?,
-    //)
-    //.await?;
     let api: Api<MaskProvider> = Api::namespaced(client.clone(), namespace);
     let provider = api
         .create(
@@ -184,7 +189,7 @@ async fn create_test_provider(
 }
 
 /// Creates a test Mask with the given slot as the name suffix.
-async fn create_test_mask(
+pub async fn create_test_mask(
     client: Client,
     namespace: &str,
     slot: usize,
@@ -200,7 +205,7 @@ async fn create_test_mask(
 }
 
 /// Waits for the test MaskProvider to observe a certain phase.
-async fn wait_for_provider_phase(
+pub async fn wait_for_provider_phase(
     client: Client,
     namespace: &str,
     phase: MaskProviderPhase,
@@ -239,7 +244,7 @@ async fn wait_for_provider_phase(
 }
 
 /// Waits for the test MaskProvider to be assigned to the test Mask.
-async fn wait_for_provider_assignment(
+pub async fn wait_for_provider_assignment(
     client: Client,
     namespace: &str,
     slot: usize,
@@ -272,7 +277,7 @@ async fn wait_for_provider_assignment(
 }
 
 /// Waits for the Mask resource to observe the phase.
-async fn wait_for_mask_phase(
+pub async fn wait_for_mask_phase(
     client: Client,
     namespace: &str,
     slot: usize,
@@ -311,14 +316,14 @@ async fn wait_for_mask_phase(
 }
 
 /// Returns the test MaskProvider's credentials Secret resource.
-async fn get_provider_secret(client: Client, provider: &MaskProvider) -> Result<Secret, Error> {
+pub async fn get_provider_secret(client: Client, provider: &MaskProvider) -> Result<Secret, Error> {
     let secret_api: Api<Secret> =
         Api::namespaced(client, provider.metadata.namespace.as_deref().unwrap());
     Ok(secret_api.get(&provider.spec.secret).await?)
 }
 
 /// Waits for a Secret resource to appear.
-async fn wait_for_secret(
+pub async fn wait_for_secret(
     client: Client,
     secret_name: String,
     namespace: &str,
@@ -340,7 +345,7 @@ async fn wait_for_secret(
 
 /// Creates a random test namespace and returns a tuple
 /// containing the test's UUID and the namespace name.
-async fn create_test_namespace(client: Client) -> Result<(String, String), Error> {
+pub async fn create_test_namespace(client: Client) -> Result<(String, String), Error> {
     let uid = uuid::Uuid::new_v4()
         .to_string()
         .split('-')
@@ -362,234 +367,30 @@ async fn create_test_namespace(client: Client) -> Result<(String, String), Error
     Ok((uid.to_owned(), name))
 }
 
-/// Deletes the namespace with the given name.
-async fn delete_namespace(client: Client, name: &str) -> Result<(), Error> {
+/// Deletes the namespace with the given name. Used to delete test namespaces.
+pub async fn delete_namespace(client: Client, name: &str) -> Result<(), Error> {
     let namespace_api: Api<Namespace> = Api::all(client);
     namespace_api.delete(name, &Default::default()).await?;
     Ok(())
 }
 
 /// Deletes all of the test resources.
-async fn cleanup(client: Client, namespace: &str) -> Result<(), Error> {
+pub async fn cleanup(client: Client, namespace: &str) -> Result<(), Error> {
     delete_namespace(client, namespace).await
 }
 
-#[tokio::test]
-async fn basic() -> Result<(), Error> {
-    let client: Client = Client::try_default().await.unwrap();
-    let (uid, namespace) = create_test_namespace(client.clone()).await?;
-    let provider_label = format!("{}-{}", PROVIDER_NAME, uid);
-
-    // Create the test MaskProvider and wait for it to be Ready.
-    let provider_ready = {
-        let client = client.clone();
-        let namespace = namespace.clone();
-        spawn(
-            async move { wait_for_provider_phase(client, &namespace, MaskProviderPhase::Ready).await },
-        )
-    };
-    let provider = create_test_provider(client.clone(), &namespace, &uid)
-        .await
-        .expect("failed to create provider");
-    let provider_uid = provider.metadata.uid.as_deref().unwrap();
-    provider_ready.await.unwrap()?;
-
-    // Watch for a MaskProvider to be assigned to the Mask.
-    let mask_secret = {
-        let mask_secret_name = format!("{}-{}-{}", MASK_NAME, 0, provider_uid);
-        let client = client.clone();
-        let namespace = namespace.clone();
-        spawn(async move { wait_for_secret(client, mask_secret_name, &namespace).await })
-    };
-
-    // Create the test Mask and wait for a provider to be assigned.
-    let assigned_provider = {
-        let client = client.clone();
-        let namespace = namespace.clone();
-        spawn(async move { wait_for_provider_assignment(client, &namespace, 0).await })
-    };
-    let mask = create_test_mask(client.clone(), &namespace, 0, &provider_label).await?;
-
-    // The provider assigned should be the same as the one we created.
-    let assigned_provider = assigned_provider.await.unwrap()?;
-    assert_eq!(assigned_provider.name, provider.name_any());
-    assert_eq!(assigned_provider.namespace, provider.namespace().unwrap());
-    assert_eq!(&assigned_provider.uid, provider_uid);
-    assert_eq!(
-        assigned_provider.secret,
-        format!("{}-{}", mask.name_any(), provider_uid)
-    );
-
-    // Ensure the Mask's credentials were correctly inherited
-    // from the MaskProvider's secret. It should be an exact match.
-    let mask_secret = mask_secret.await.unwrap()?;
-    let provider_secret = get_provider_secret(client.clone(), &provider).await?;
-    assert_eq!(provider_secret.data, mask_secret.data);
-
-    // Garbage collect the test resources.
-    cleanup(client, &namespace).await?;
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn err_no_providers() -> Result<(), Error> {
-    let client: Client = Client::try_default().await.unwrap();
-    let (uid, namespace) = create_test_namespace(client.clone()).await?;
-    let provider_label = format!("{}-{}", PROVIDER_NAME, uid);
-
-    // Watch for the error message in the Mask's status.
-    let fail = {
-        let client = client.clone();
-        let namespace = namespace.clone();
-        spawn(
-            async move { wait_for_mask_phase(client, &namespace, 0, MaskPhase::ErrNoProviders).await },
-        )
-    };
-
-    // Create a Mask without first creating the MaskProvider.
-    create_test_mask(client.clone(), &namespace, 0, &provider_label).await?;
-
-    // Ensure the error state is observed.
-    fail.await.unwrap()?;
-
-    // Garbage collect the test resources.
-    cleanup(client, &namespace).await?;
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn waiting() -> Result<(), Error> {
-    let client: Client = Client::try_default().await.unwrap();
-    let (uid, namespace) = create_test_namespace(client.clone()).await?;
-
-    // Create the test MaskProvider.
-    let provider = create_test_provider(client.clone(), &namespace, &uid)
-        .await
-        .expect("failed to create test provider");
-    let provider_name = provider.metadata.name.as_deref().unwrap();
-    let provider_uid = provider.metadata.uid.as_deref().unwrap();
-
-    // Watch for a MaskProvider to be assigned to the Mask.
-    let mask0_secret_name = format!("{}-{}-{}", MASK_NAME, 0, provider_uid);
-    let mask0_secret = {
-        let client = client.clone();
-        let namespace = namespace.clone();
-        spawn(async move { wait_for_secret(client, mask0_secret_name.clone(), &namespace).await })
-    };
-
-    // Create the first test Mask and wait for a provider to be assigned.
-    let assigned_provider = {
-        let client = client.clone();
-        let namespace = namespace.clone();
-        spawn(async move { wait_for_provider_assignment(client, &namespace, 0).await })
-    };
-    let mask0 = create_test_mask(client.clone(), &namespace, 0, provider_name).await?;
-
-    // The provider assigned should be the same as the one we created.
-    let assigned_provider = assigned_provider
-        .await
-        .unwrap()
-        .expect("failed to wait for provider assignment");
-    assert_eq!(assigned_provider.name, provider.name_any());
-    assert_eq!(assigned_provider.namespace, provider.namespace().unwrap());
-    assert_eq!(
-        &assigned_provider.uid,
-        provider.metadata.uid.as_deref().unwrap()
-    );
-    assert_eq!(
-        assigned_provider.secret,
-        format!("{}-{}", mask0.name_any(), provider_uid)
-    );
-
-    // Ensure the Mask's credentials were correctly inherited
-    // from the MaskProvider's secret. It should be an exact match.
-    let mask0_secret = mask0_secret.await.unwrap()?;
-    let provider_secret = get_provider_secret(client.clone(), &provider).await?;
-    assert_eq!(provider_secret.data, mask0_secret.data);
-
-    // Try and create a second Mask and ensure it doesn't go Ready.
-    let mask1_wait = {
-        let client = client.clone();
-        let namespace = namespace.clone();
-        spawn(async move { wait_for_mask_phase(client, &namespace, 1, MaskPhase::Waiting).await })
-    };
-    let mask1 = create_test_mask(client.clone(), &namespace, 1, provider_name).await?;
-
-    // Ensure the waiting status was observed.
-    mask1_wait.await.unwrap()?;
-
-    // Delete the first Mask and ensure the second Mask is assigned to the MaskProvider.
-    let assigned_provider = {
-        let client = client.clone();
-        let namespace = namespace.clone();
-        spawn(async move { wait_for_provider_assignment(client, &namespace, 1).await })
-    };
-    delete_test_mask(client.clone(), &namespace, 0).await?;
-
-    // Ensure the test provider was assigned to the second Mask.
-    let assigned_provider = assigned_provider
-        .await
-        .unwrap()
-        .expect("failed to wait for provider assignment");
-    assert_eq!(assigned_provider.name, provider.name_any());
-    assert_eq!(assigned_provider.namespace, provider.namespace().unwrap());
-    assert_eq!(
-        &assigned_provider.uid,
-        provider.metadata.uid.as_deref().unwrap()
-    );
-    assert_eq!(
-        assigned_provider.secret,
-        format!("{}-{}", mask1.name_any(), provider_uid)
-    );
-
-    // Delete the Provider and ensure the Mask has ErrNoProviders phase.
-    let mask1_wait = {
-        let client = client.clone();
-        let namespace = namespace.clone();
-        spawn(
-            async move { wait_for_mask_phase(client, &namespace, 1, MaskPhase::ErrNoProviders).await },
-        )
-    };
-    delete_test_provider(client.clone(), &namespace, &provider_name).await?;
-
-    // Ensure the ErrNoProviders phase was observed.
-    mask1_wait.await.unwrap()?;
-
-    // Sanity check: ensure all MaskConsumers in the namespace have ErrNoProviders.
-    assert!(Api::<MaskConsumer>::namespaced(client.clone(), &namespace)
-        .list(&Default::default())
-        .await?
-        .into_iter()
-        .filter_map(|mc| mc.status)
-        .filter_map(|s| s.phase)
-        .all(|p| p == MaskConsumerPhase::ErrNoProviders));
-
-    // Sanity check: ensure there are no MaskReservations in the namespace.
-    assert_eq!(
-        Api::<MaskReservation>::namespaced(client.clone(), &namespace)
-            .list(&Default::default())
-            .await?
-            .items
-            .len(),
-        0
-    );
-
-    // Garbage collect the test resources.
-    cleanup(client, &namespace).await?;
-
-    Ok(())
-}
-
 /// Deletes the test MaskProvider.
-async fn delete_test_provider(client: Client, namespace: &str, name: &str) -> Result<(), Error> {
+pub async fn delete_test_provider(
+    client: Client,
+    namespace: &str,
+    name: &str,
+) -> Result<(), Error> {
     assert!(delete_wait::<MaskProvider>(client.clone(), name, namespace).await?);
     Ok(())
 }
 
 /// Deletes the test Mask at the given slot.
-async fn delete_test_mask(client: Client, namespace: &str, slot: usize) -> Result<(), Error> {
+pub async fn delete_test_mask(client: Client, namespace: &str, slot: usize) -> Result<(), Error> {
     assert!(
         delete_wait::<Mask>(
             client.clone(),
@@ -602,7 +403,7 @@ async fn delete_test_mask(client: Client, namespace: &str, slot: usize) -> Resul
 }
 
 /// Waits for the resource to be deleted.
-async fn delete_wait<
+pub async fn delete_wait<
     T: Clone + Resource + CustomResourceExt + Serialize + DeserializeOwned + Debug,
 >(
     client: Client,
@@ -680,44 +481,3 @@ where
         Err(e) => Err(e.into()),
     }
 }
-
-//async fn create_wait<
-//    T: Clone + Resource + CustomResourceExt + Serialize + DeserializeOwned + Debug,
-//>(
-//    client: Client,
-//    name: &str,
-//    namespace: &str,
-//    resource: T,
-//) -> Result<T, Error>
-//where
-//    <T as Resource>::DynamicType: Default,
-//    T: Resource<Scope = NamespaceResourceScope>,
-//{
-//    let api: Api<T> = Api::namespaced(client, namespace);
-//    let start = std::time::SystemTime::now();
-//    let timeout = std::time::Duration::from_secs(12);
-//    loop {
-//        match api.create(&Default::default(), &resource).await {
-//            Ok(mask) => return Ok(mask),
-//            Err(kube::Error::Api(ae)) if ae.code == 409 => {
-//                if start.elapsed().unwrap() > timeout {
-//                    panic!(
-//                        "Timed out waiting for {} {}/{} to be deleted",
-//                        T::crd().metadata.name.as_deref().unwrap(),
-//                        namespace,
-//                        name
-//                    );
-//                }
-//                // Try and delete it again.
-//                match api.delete(name, &Default::default()).await {
-//                    Ok(_) => {}
-//                    Err(kube::Error::Api(ae)) if ae.code == 404 => {}
-//                    Err(e) => return Err(e.into()),
-//                }
-//                // Sleep and try again
-//                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-//            }
-//            Err(e) => return Err(e.into()),
-//        }
-//    }
-//}

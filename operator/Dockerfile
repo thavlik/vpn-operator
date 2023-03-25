@@ -16,13 +16,13 @@ WORKDIR /vpn-operator/operator
 COPY operator/Cargo.toml .
 RUN mkdir src \
     && echo 'fn main() { panic!("Dummy image called!"); }' > src/main.rs \
-    && cargo build \
+    && cargo build --release \
     && rm -rf src
 COPY operator/src src
 RUN touch -a -m ./src/main.rs \
-    && cargo build
-FROM debian:bullseye-slim
+    && cargo build --release
+FROM scratch
 WORKDIR /
-COPY --from=builder /vpn-operator/operator/target/debug/vpn-operator .
+COPY --from=builder /vpn-operator/operator/target/release/vpn-operator .
 ENV RUST_BACKTRACE=full
 CMD ["/vpn-operator"]

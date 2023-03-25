@@ -21,7 +21,7 @@ RUN mkdir src \
 COPY operator/src src
 RUN touch -a -m ./src/main.rs \
     && cargo build --release
-FROM scratch
+FROM debian:bullseye-slim
 WORKDIR /
 COPY --from=builder /vpn-operator/operator/target/release/vpn-operator .
 ENV RUST_BACKTRACE=full

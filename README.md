@@ -294,6 +294,8 @@ kubectl get crd maskconsumers.vpn.beebs.dev -o yaml
 kubectl get crd maskreservations.vpn.beebs.dev -o yaml
 ```
 
+Note the `MaskReservation` resource is for internal use only by the controller. It holds a cross-namespace reference to the `MaskConsumer` and is used to ensure the `MaskConsumer` is deleted before allowing its slot to be reassigned.
+
 ### Uninstallation
 For full removal of vpn-operator from your cluster:
 ```bash

@@ -1,3 +1,5 @@
+# kindest toolchain config file.
+# See: https://github.com/midcontinentcontrols/kindest
 dependencies:
   - operator
 env:

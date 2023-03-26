@@ -125,7 +125,7 @@ spec:
 
     # The following enables customization of the verification Pod
     # resource. All of these values are optional, and they are merged
-    # onto the default generated.
+    # onto the default templates.
     overrides:
       pod: # Overrides for the Pod resource.
         metadata:

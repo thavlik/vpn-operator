@@ -25,7 +25,7 @@ spec:
             - manage-consumers
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           image: {{ .Values.image }}
-      {{- if .Values.prometheus.exposed }}
+      {{- if .Values.prometheus.expose }}
           env:
             - name: METRICS_PORT
               value: "8080"

@@ -24,7 +24,7 @@ struct Cli {
 
     /// Prometheus metrics server scrape port. Disabled by default.
     #[cfg(feature = "metrics")]
-    #[arg(long, env)]
+    #[arg(long, env = "METRICS_PORT")]
     metrics_port: Option<u16>,
 }
 

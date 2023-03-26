@@ -14,9 +14,9 @@ pub const FINALIZER_NAME: &str = "vpn.beebs.dev/finalizer";
 /// this action has no effect.
 ///
 /// # Arguments:
-/// - `client` - Kubernetes client to modify the `MaskReservation` resource with.
-/// - `name` - Name of the `MaskReservation` resource to modify. Existence is not verified
-/// - `namespace` - Namespace where the `MaskReservation` resource with given `name` resides.
+/// - `client` - Kubernetes client to modify the `T` resource with.
+/// - `name` - Name of the `T` resource to modify. Existence is not verified
+/// - `namespace` - Namespace where the `T` resource with given `name` resides.
 ///
 /// Note: Does not check for resource's existence for simplicity.
 pub async fn add<T: Clone + Resource + Serialize + DeserializeOwned + Debug>(
@@ -42,9 +42,9 @@ where
 /// action has no effect.
 ///
 /// # Arguments:
-/// - `client` - Kubernetes client to modify the `MaskReservation` resource with.
-/// - `name` - Name of the `MaskReservation` resource to modify. Existence is not verified
-/// - `namespace` - Namespace where the `MaskReservation` resource with given `name` resides.
+/// - `client` - Kubernetes client to modify the `T` resource with.
+/// - `name` - Name of the `T` resource to modify. Existence is not verified
+/// - `namespace` - Namespace where the `T` resource with given `name` resides.
 ///
 /// Note: Does not check for resource's existence for simplicity.
 pub async fn delete<T: Clone + Resource + Serialize + DeserializeOwned + Debug>(

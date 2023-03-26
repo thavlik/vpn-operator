@@ -2,8 +2,8 @@ use chrono::Utc;
 use futures::stream::StreamExt;
 use k8s_openapi::api::core::v1::Secret;
 use kube::{
-    ResourceExt,
     api::ListParams, client::Client, runtime::controller::Action, runtime::Controller, Api,
+    ResourceExt,
 };
 use std::sync::Arc;
 use tokio::time::Duration;

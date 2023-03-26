@@ -9,8 +9,8 @@ use std::{clone::Clone, fmt::Debug};
 use vpn_types::*;
 
 pub trait Object<S: Status> {
-    /// Returns a mutable reference to the status object.
-    /// Creates the status object if it does not exist with the default value.
+    /// Returns a mutable reference to the status object, initializing
+    /// it with the default value if it does not exist.
     fn mut_status(&mut self) -> &mut S;
 }
 

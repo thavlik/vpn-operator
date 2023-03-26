@@ -1,4 +1,3 @@
-use const_format::concatcp;
 use hyper::{
     header::CONTENT_TYPE,
     service::{make_service_fn, service_fn},
@@ -8,24 +7,23 @@ use lazy_static::lazy_static;
 use prometheus::{labels, opts, register_counter, register_gauge, register_histogram_vec};
 use prometheus::{Counter, Encoder, Gauge, HistogramVec, TextEncoder};
 
-/// The prefix to add to all the prometheus metrics keys.
-pub const METRICS_PREFIX: &str = "vpno_";
+use crate::util::metrics::prefix;
 
 lazy_static! {
     static ref HTTP_COUNTER: Counter = register_counter!(opts!(
-        concatcp!(METRICS_PREFIX, "http_requests_total"),
+        &format!("{}_http_requests_total", prefix()),
         "Number of HTTP requests made to the metrics server.",
         labels! {"handler" => "all",}
     ))
     .unwrap();
     static ref HTTP_BODY_GAUGE: Gauge = register_gauge!(opts!(
-        concatcp!(METRICS_PREFIX, "http_response_size_bytes"),
+        &format!("{}_http_response_size_bytes", prefix()),
         "Metrics server HTTP response sizes in bytes.",
         labels! {"handler" => "all",}
     ))
     .unwrap();
     static ref HTTP_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        concatcp!(METRICS_PREFIX, "http_request_duration_seconds"),
+        &format!("{}_http_request_duration_seconds", prefix()),
         "Metrics server HTTP request latencies in seconds.",
         &["handler"]
     )

@@ -16,7 +16,7 @@ use crate::util::{
 };
 
 #[cfg(feature = "metrics")]
-use super::metrics;
+use crate::util::metrics::ControllerMetrics;
 
 /// Entrypoint for the `MaskReservation` controller.
 pub async fn run(client: Client) -> Result<(), Error> {
@@ -52,6 +52,9 @@ pub async fn run(client: Client) -> Result<(), Error> {
 struct ContextData {
     /// Kubernetes client to make Kubernetes API requests with. Required for K8S resource management.
     client: Client,
+    
+    #[cfg(feature = "metrics")]
+    metrics: ControllerMetrics,
 }
 
 impl ContextData {
@@ -61,7 +64,17 @@ impl ContextData {
     /// - `client`: A Kubernetes client to make Kubernetes REST API requests with. Resources
     /// will be created and deleted with this client.
     pub fn new(client: Client) -> Self {
-        ContextData { client }
+        #[cfg(feature = "metrics")]
+        {
+            return ContextData {
+                client,
+                metrics: ControllerMetrics::new("reservations"),
+            }
+        }
+        #[cfg(not(feature = "metrics"))]
+        {
+            return ContextData { client }
+        }
     }
 }
 
@@ -137,7 +150,7 @@ async fn reconcile(
 
     // Increment total number of reconciles for the MaskReservation resource.
     #[cfg(feature = "metrics")]
-    metrics::RESERVATIONS_RECONCILE_COUNTER
+    context.metrics.reconcile_counter
         .with_label_values(&[&name, &namespace])
         .inc();
 
@@ -154,13 +167,13 @@ async fn reconcile(
 
     // Report the read phase performance.
     #[cfg(feature = "metrics")]
-    metrics::RESERVATIONS_READ_HISTOGRAM
+    context.metrics.read_histogram
         .with_label_values(&[&name, &namespace, action.to_str()])
         .observe(start.elapsed().as_secs_f64());
 
     // Increment the counter for the action.
     #[cfg(feature = "metrics")]
-    metrics::RESERVATIONS_ACTION_COUNTER
+    context.metrics.action_counter
         .with_label_values(&[&name, &namespace, action.to_str()])
         .inc();
 
@@ -171,7 +184,7 @@ async fn reconcile(
         ReservationAction::NoOp => None,
         // Start a performance timer for the write phase.
         _ => Some(
-            metrics::RESERVATIONS_WRITE_HISTOGRAM
+            context.metrics.write_histogram
                 .with_label_values(&[&name, &namespace, action.to_str()])
                 .start_timer(),
         ),

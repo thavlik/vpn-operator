@@ -15,7 +15,7 @@ use crate::util::{
 };
 
 #[cfg(feature = "metrics")]
-use super::metrics;
+use crate::util::metrics::ControllerMetrics;
 
 /// Entrypoint for the `Mask` controller.
 pub async fn run(client: Client) -> Result<(), Error> {
@@ -52,6 +52,9 @@ pub async fn run(client: Client) -> Result<(), Error> {
 struct ContextData {
     /// Kubernetes client to make Kubernetes API requests with. Required for K8S resource management.
     client: Client,
+
+    #[cfg(feature = "metrics")]
+    metrics: ControllerMetrics,
 }
 
 impl ContextData {
@@ -61,7 +64,17 @@ impl ContextData {
     /// - `client`: A Kubernetes client to make Kubernetes REST API requests with. Resources
     /// will be created and deleted with this client.
     pub fn new(client: Client) -> Self {
-        ContextData { client }
+        #[cfg(feature = "metrics")]
+        {
+            return ContextData {
+                client,
+                metrics: ControllerMetrics::new("masks"),
+            }
+        }
+        #[cfg(not(feature = "metrics"))]
+        {
+            return ContextData { client }
+        }
     }
 }
 
@@ -142,7 +155,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
 
     // Increment total number of reconciles for the Mask resource.
     #[cfg(feature = "metrics")]
-    metrics::MASK_RECONCILE_COUNTER
+    context.metrics.reconcile_counter
         .with_label_values(&[&name, &namespace])
         .inc();
 
@@ -159,13 +172,13 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
 
     // Report the read phase performance.
     #[cfg(feature = "metrics")]
-    metrics::MASK_READ_HISTOGRAM
+    context.metrics.read_histogram
         .with_label_values(&[&name, &namespace, action.to_str()])
         .observe(start.elapsed().as_secs_f64());
 
     // Increment the counter for the action.
     #[cfg(feature = "metrics")]
-    metrics::MASK_ACTION_COUNTER
+    context.metrics.action_counter
         .with_label_values(&[&name, &namespace, action.to_str()])
         .inc();
 
@@ -176,7 +189,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
         MaskAction::NoOp => None,
         // Start a performance timer for the write phase.
         _ => Some(
-            metrics::MASK_WRITE_HISTOGRAM
+            context.metrics.write_histogram
                 .with_label_values(&[&name, &namespace, action.to_str()])
                 .start_timer(),
         ),

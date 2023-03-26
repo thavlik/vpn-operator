@@ -4,6 +4,7 @@ pub mod patch;
 
 pub(crate) mod finalizer;
 pub(crate) mod messages;
+pub(crate) mod metrics;
 
 mod error;
 mod merge;

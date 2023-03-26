@@ -136,7 +136,7 @@ spec:
       containers:
         # Overrides for the init Container. This container fetches
         # the unmasked IP address from an external service and writes
-        # it to /shared/ip for the other containers.
+        # it to /shared/ip before the other containers are started.
         init:
           image: curlimages/curl:7.88.1
         # Overrides for the VPN Container. This container connects

@@ -3,9 +3,16 @@ use prometheus::{register_counter_vec, register_histogram_vec, CounterVec, Histo
 /// Contains the metrics for a controller. Each controller will use
 /// unique metric names, but they will use these same metric types.
 pub struct ControllerMetrics {
+    /// Number of reconciliations by the controller.
     pub reconcile_counter: CounterVec,
+
+    /// Number of actions taken by the controller.
     pub action_counter: CounterVec,
+
+    /// Read phase latency of the controller.
     pub read_histogram: HistogramVec,
+
+    /// Write phase latency of the controller.
     pub write_histogram: HistogramVec,
 }
 

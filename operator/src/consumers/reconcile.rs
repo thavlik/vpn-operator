@@ -298,7 +298,7 @@ pub fn get_consumer_phase(instance: &MaskConsumer) -> Result<(MaskConsumerPhase,
 /// - `instance`: A reference to `MaskConsumer` being reconciled to decide next action upon.
 async fn determine_action(
     client: Client,
-    name: &str,
+    _name: &str,
     namespace: &str,
     instance: &MaskConsumer,
 ) -> Result<ConsumerAction, Error> {
@@ -325,23 +325,16 @@ async fn determine_action(
 
     // Ensure the MaskReservation that reserves the slot for the MaskConsumer exists.
     // If it does not exist, we should delete this MaskConsumer immediately.
-    let _reservation = match get_reservation(client.clone(), provider).await? {
+    if get_reservation(client.clone(), provider).await?.is_none() {
         // MaskReservation has been deleted, so we should delete this MaskConsumer.
-        None => {
-            return Ok(ConsumerAction::Delete {
-                delete_resource: true,
-            })
-        }
-        // MaskReservation still exists.
-        Some(r) => r,
-    };
+        return Ok(ConsumerAction::Delete {
+            delete_resource: true,
+        });
+    }
 
     // Ensure the Secret containing the env credentials exists.
     // The Secret should exist in the same namespace as the MaskConsumer.
-    if get_secret(client, name, namespace, provider)
-        .await?
-        .is_none()
-    {
+    if get_secret(client, namespace, provider).await?.is_none() {
         return Ok(ConsumerAction::CreateSecret);
     }
 
@@ -354,15 +347,13 @@ async fn determine_action(
 /// the Secret's provider label doesn't match the expected uid.
 async fn get_secret(
     client: Client,
-    name: &str,
     namespace: &str,
     provider: &AssignedProvider,
 ) -> Result<Option<Secret>, Error> {
     let api: Api<Secret> = Api::namespaced(client, namespace);
     // Because the Secret's name includese the uid, we don't
     // have the to check the resource labels for a match.
-    let secret_name = format!("{}-{}", name, &provider.uid);
-    match api.get(&secret_name).await {
+    match api.get(&provider.secret).await {
         Ok(secret) => Ok(Some(secret)),
         Err(kube::Error::Api(ae)) if ae.code == 404 => Ok(None),
         Err(e) => Err(e.into()),

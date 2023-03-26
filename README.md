@@ -265,7 +265,7 @@ controllers:
 ### Ownership model
 Any `Pod` that uses a `Mask` should reference its `MaskConsumer` in [`metadata.ownerReferences`](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) with `blockOwnerDeletion=true`. This way, the deletion of the `MaskConsumer` (and the associated `MaskReservation` used to reserve the slot) will be blocked until the `Pod` is deleted, and the `Pod` will automatically be garbage collected when its `MaskConsumer` is deleted.
 
-Your `Mask` should have an owner reference to your custom resource, and your `Pod` should have owner references to your `MaskConsumer` and (optionally) the aforementioned custom resource as well. Your custom resource should be the only owner reference you create with `controller=true`, as your controller is responsible for managing the `Mask` and `Pod` resources it creates. Owner references with `controller=false` exist strictly for garbage collection purposes.
+Your `Mask` should have an owner reference to your custom resource, and your `Pod` should have owner references to the created `MaskConsumer` and (optionally) the aforementioned custom resource as well. Your custom resource should be the only owner reference you create with `controller=true`, as your controller is responsible for managing the `Mask` and `Pod` resources it creates. Owner references with `controller=false` exist strictly for garbage collection purposes.
 
 ### Performance metrics
 These are names and descriptions of [Prometheus](https://prometheus.io/) metrics collected by the controllers:

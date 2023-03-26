@@ -2,6 +2,7 @@ use std::time::Duration;
 
 pub mod patch;
 
+pub(crate) mod finalizer;
 pub(crate) mod messages;
 
 mod error;
@@ -12,9 +13,6 @@ pub use merge::deep_merge;
 
 /// The default interval for requeuing a managed resource.
 pub(crate) const PROBE_INTERVAL: Duration = Duration::from_secs(12);
-
-/// Name of the kubernetes resource finalizer field.
-pub(crate) const FINALIZER_NAME: &str = "vpn.beebs.dev/finalizer";
 
 /// Name of the label in the Secret metadata corresponding
 /// to the originating Provider UID.

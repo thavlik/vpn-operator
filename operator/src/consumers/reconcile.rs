@@ -10,8 +10,11 @@ use std::sync::Arc;
 use tokio::time::Duration;
 use vpn_types::*;
 
-use super::{actions, finalizer};
-use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
+use super::actions;
+use crate::util::{
+    finalizer::{self, FINALIZER_NAME},
+    Error, PROBE_INTERVAL,
+};
 
 #[cfg(feature = "metrics")]
 use super::metrics;
@@ -200,7 +203,7 @@ async fn reconcile(
             actions::terminating(client.clone(), &instance).await?;
 
             // Remove the finalizer from the MaskConsumer resource.
-            finalizer::delete(client.clone(), &name, &namespace).await?;
+            finalizer::delete::<MaskConsumer>(client.clone(), &name, &namespace).await?;
 
             if delete_resource {
                 // Delete the `MaskConsumer` resource itself. This will be

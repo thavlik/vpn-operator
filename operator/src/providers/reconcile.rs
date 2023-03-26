@@ -11,13 +11,13 @@ use std::sync::Arc;
 use tokio::time::Duration;
 use vpn_types::*;
 
-use super::{
-    actions::{self, get_verify_mask_name, PROBE_CONTAINER_NAME, VPN_CONTAINER_NAME},
-    finalizer,
-};
+use super::actions::{self, get_verify_mask_name, PROBE_CONTAINER_NAME, VPN_CONTAINER_NAME};
 use crate::{
     masks::util::get_consumer,
-    util::{Error, FINALIZER_NAME, PROBE_INTERVAL},
+    util::{
+        finalizer::{self, FINALIZER_NAME},
+        Error, PROBE_INTERVAL,
+    },
 };
 
 #[cfg(feature = "metrics")]
@@ -227,7 +227,7 @@ async fn reconcile(
             actions::terminating(client.clone(), &instance).await?;
 
             // Remove the finalizer, which will allow the MaskProvider resource to be deleted.
-            finalizer::delete(client, &name, &namespace).await?;
+            finalizer::delete::<MaskProvider>(client, &name, &namespace).await?;
 
             // No need to requeue as the resource is being deleted.
             Action::await_change()

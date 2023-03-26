@@ -1,5 +1,4 @@
 mod actions;
-mod finalizer;
 mod reconcile;
 
 #[cfg(feature = "metrics")]

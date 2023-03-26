@@ -8,8 +8,11 @@ use std::sync::Arc;
 use tokio::time::Duration;
 use vpn_types::*;
 
-use super::{actions, finalizer, util::get_consumer};
-use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
+use super::{actions, util::get_consumer};
+use crate::util::{
+    finalizer::{self, FINALIZER_NAME},
+    Error, PROBE_INTERVAL,
+};
 
 #[cfg(feature = "metrics")]
 use super::metrics;
@@ -200,7 +203,7 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             // Kubernetes will delete it automatically because of the owner reference.
 
             // Remove the finalizer, which will allow the Mask resource to be deleted.
-            finalizer::delete(client, &name, &namespace).await?;
+            finalizer::delete::<Mask>(client, &name, &namespace).await?;
 
             // Makes no sense to requeue after deleting, as the resource is gone.
             Action::await_change()

@@ -9,8 +9,11 @@ use std::sync::Arc;
 use tokio::time::Duration;
 use vpn_types::*;
 
-use super::{actions, finalizer};
-use crate::util::{Error, FINALIZER_NAME, PROBE_INTERVAL};
+use super::actions;
+use crate::util::{
+    finalizer::{self, FINALIZER_NAME},
+    Error, PROBE_INTERVAL,
+};
 
 #[cfg(feature = "metrics")]
 use super::metrics;
@@ -195,7 +198,7 @@ async fn reconcile(
             // before all Pods using the credentials are truly disconnected.
             let result = if actions::delete_consumer(client.clone(), &instance).await? {
                 // Remove the finalizer, which will allow the MaskReservation resource to be deleted.
-                finalizer::delete(client.clone(), &name, &namespace).await?;
+                finalizer::delete::<MaskReservation>(client.clone(), &name, &namespace).await?;
 
                 // Makes no sense to requeue after deleting, as the resource is gone.
                 Action::await_change()

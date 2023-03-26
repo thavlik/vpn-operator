@@ -1,5 +1,7 @@
 use prometheus::{register_counter_vec, register_histogram_vec, CounterVec, HistogramVec};
 
+/// Contains the metrics for a controller. Each controller will use
+/// unique metric names, but they will use these same metric types.
 pub struct ControllerMetrics {
     pub reconcile_counter: CounterVec,
     pub action_counter: CounterVec,
@@ -8,6 +10,8 @@ pub struct ControllerMetrics {
 }
 
 impl ControllerMetrics {
+    /// Creates a new set of metrics for a controller. The tag is used
+    /// to associate the metrics with a specific controller.
     pub fn new(tag: &str) -> Self {
         let prefix = metrics_prefix();
         let reconcile_counter = register_counter_vec!(
@@ -43,7 +47,8 @@ impl ControllerMetrics {
     }
 }
 
-/// Returns the metrics prefix from the METRICS_PREFIX environment variable.
+/// Returns the metrics prefix, which can be overridden with the
+/// METRICS_PREFIX environment variable.
 fn metrics_prefix() -> String {
     std::env::var("METRICS_PREFIX").unwrap_or_else(|_| "vpno".to_string())
 }

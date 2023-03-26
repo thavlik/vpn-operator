@@ -186,7 +186,7 @@ pub async fn active(
 pub async fn terminating(client: Client, instance: &MaskProvider) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.phase = Some(MaskProviderPhase::Terminating);
-        status.message = Some("Resource deletion is pending garbage collection.".to_owned());
+        status.message = Some(messages::TERMINATING.to_owned());
     })
     .await?;
     Ok(())

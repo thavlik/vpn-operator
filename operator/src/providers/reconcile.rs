@@ -490,31 +490,31 @@ async fn determine_verify_mask_action(
     mask: &Mask,
 ) -> Result<MaskProviderAction, Error> {
     Ok(match mask.status.as_ref().map_or(None, |s| s.phase) {
-        // Controller is still processing the Mask.
-        Some(MaskPhase::Pending) | None => MaskProviderAction::Verifying {
-            start_time: None,
-            message: "Waiting on the controller for the verification Mask.".to_owned(),
-        },
+        // Controller is still processing the Mask. If it's in the Terminating
+        // phase, it is most likely pending recreation.
+        None | Some(MaskPhase::Pending) | Some(MaskPhase::Terminating) => {
+            MaskProviderAction::Verifying {
+                start_time: None,
+                message: "Waiting on the controller for the verification Mask.".to_owned(),
+            }
+        }
         // The MaskProvider has too many active slots, we will have to wait.
         Some(MaskPhase::Waiting) => MaskProviderAction::Verifying {
             start_time: None,
             message: "Waiting for the verification Mask to be assigned a slot.".to_owned(),
         },
         // The Mask is ready to be used by the verification Pod.
-        Some(MaskPhase::Active) => {
-            // Get the Mask's consumer, which manages provider assignment.
-            let consumer = match get_consumer(client.clone(), mask).await {
-                // Consumer doesn't exist yet, we will have to wait.
-                Ok(None) => return Ok(MaskProviderAction::NoOp),
-                // Consumer exists. Inspect its status object.
-                Ok(Some(consumer)) => consumer,
-                // Some unknown error.
-                Err(e) => return Err(e),
-            };
-
-            // Create the Pod owned by the MaskConsumer.
-            MaskProviderAction::CreateVerifyPod(consumer)
-        }
+        Some(MaskPhase::Active) => match get_consumer(client, mask).await {
+            // Consumer doesn't exist yet for some reason, we will have to wait.
+            Ok(None) => MaskProviderAction::Verifying {
+                start_time: None,
+                message: "Waiting on the controller for the verification MaskConsumer.".to_owned(),
+            },
+            // Consumer exists. Create the pod.
+            Ok(Some(consumer)) => MaskProviderAction::CreateVerifyPod(consumer),
+            // Some unknown error occured.
+            Err(e) => return Err(e),
+        },
         // Unreachable branch: failed to assign the MaskProvider.
         Some(MaskPhase::ErrNoProviders) => MaskProviderAction::VerifyFailed(
             "Verification Mask observed unexpected ErrNoProviders.".to_owned(),

@@ -51,7 +51,7 @@ pub struct MaskProviderVerifyOverridesSpec {
 /// Unless [`skip=true`](MaskProviderVerifySpec::skip), the credentials
 /// are dialed with a [gluetun](https://github.com/qdm12/gluetun) container
 /// to ensure they are valid before the [`MaskProvider`] can be assigned
-/// to a [`Mask`].
+/// to a [`MaskConsumer`].
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, JsonSchema)]
 pub struct MaskProviderVerifySpec {
     /// If `true`, credentials verification is skipped entirely. This is useful
@@ -107,10 +107,16 @@ pub struct MaskProviderSpec {
     /// Reference to a [`Secret`](k8s_openapi::api::core::v1::Secret)
     /// resource containing the env vars that will be injected into
     /// the [gluetun](https://github.com/qdm12/gluetun) container.
+    /// The contents of this `Secret` will be copied to the namespace
+    /// of any [`MaskConsumer`] that reserves a slot with the provider.
+    /// The created `Secret` is owned by the `MaskConsumer` and will
+    /// automatically be deleted whenever the [`MaskConsumer`] is
+    /// deleted, which happens when the provider is unassigned or
+    /// the [`Mask`] itself is deleted.
     pub secret: String,
 
-    /// Maximum number of [`Mask`] resources that can be assigned this
-    /// [`MaskProvider`] at any given time. Used to prevent excessive
+    /// Maximum number of [`MaskConsumer`] resources that can be assigned
+    /// this [`MaskProvider`] at any given time. Used to prevent excessive
     /// connections to the VPN service, which could result in account
     /// suspension with some providers.
     #[serde(rename = "maxSlots")]
@@ -126,12 +132,16 @@ pub struct MaskProviderSpec {
     /// (`"us-west"`, `"uk-london"`) - whatever makes sense for you.
     pub tags: Option<Vec<String>>,
 
-    /// Optional list of namespaces that are allowed to use
-    /// this [`MaskProvider`]. If unset, all namespaces are allowed.
+    /// Optional list of namespaces that are allowed to use this [`MaskProvider`].
+    /// Even if the [`Mask`] expresses a preference for this provider in
+    /// [`MaskSpec::providers`], it can only be assigned if it's in one of these
+    /// namespaces. If unset, all [`Mask`] namespaces are permitted.
     pub namespaces: Option<Vec<String>>,
 
     /// VPN service verification options. Used to ensure the credentials
     /// are valid before assigning the [`MaskProvider`] to [`Mask`] resources.
+    /// Enabled by default. Set [`skip=true`](MaskProviderVerifySpec::skip) to
+    /// disable verification.
     pub verify: Option<MaskProviderVerifySpec>,
 }
 
@@ -172,10 +182,10 @@ pub enum MaskProviderPhase {
     /// next reconciliation.
     Verified,
 
-    /// The [`MaskProvider`] is ready to be assigned to [`Mask`] resources.
+    /// The [`MaskProvider`] is ready to be assigned to [`MaskConsumer`] resources.
     Ready,
 
-    /// The [`MaskProvider`] is assigned to one or more [`Mask`] resources.
+    /// The [`MaskProvider`] is assigned to one or more [`MaskConsumer`] resources.
     Active,
 
     /// Resource deletion is pending garbage collection.

@@ -27,6 +27,16 @@ pub async fn waiting(client: Client, instance: &Mask) -> Result<(), Error> {
     Ok(())
 }
 
+/// Updates the `Mask`'s phase to Terminating.
+pub async fn terminating(client: Client, instance: &Mask) -> Result<(), Error> {
+    patch_status(client, instance, |status| {
+        status.phase = Some(MaskPhase::Terminating);
+        status.message = Some(messages::TERMINATING.to_owned());
+    })
+    .await?;
+    Ok(())
+}
+
 /// Updates the Mask's phase to Active, signifying that everything
 /// is fully reconciled and the VPN credentials are ready to be used.
 pub async fn active(client: Client, instance: &Mask) -> Result<(), Error> {

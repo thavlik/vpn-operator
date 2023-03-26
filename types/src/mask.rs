@@ -11,10 +11,11 @@ use std::{fmt, str::FromStr};
 /// the credentials can be garbage collected by using the [`MaskConsumer`] as
 /// an owner reference.
 ///
-/// Once a [`Mask`] is assigned a suitable provider, the controller copies the
-/// provider's credentials to a [`Secret`](k8s_openapi::api::core::v1::Secret)
+/// Once a [`Mask`] is assigned a suitable provider through its [`MaskConsumer`],
+/// the controller copies the provider's credentials to a [`Secret`](k8s_openapi::api::core::v1::Secret)
 /// owned by the [`MaskConsumer`] and references it as [`AssignedProvider::secret`]
-/// within [`MaskConsumerStatus::provider`].
+/// within [`MaskConsumerStatus::provider`]. The credentials are then ready to be used
+/// be a container, or however your application uses them.
 #[derive(CustomResource, Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 #[kube(
     group = "vpn.beebs.dev",
@@ -68,6 +69,9 @@ pub enum MaskPhase {
     /// The [`MaskConsumer`] resource's assigned credentials are in use by a Pod.
     Active,
 
+    /// Resource deletion is pending garbage collection.
+    Terminating,
+
     /// No suitable [`MaskProvider`] resources were found.
     ErrNoProviders,
 }
@@ -80,6 +84,7 @@ impl FromStr for MaskPhase {
             "Pending" => Ok(MaskPhase::Pending),
             "Active" => Ok(MaskPhase::Active),
             "Waiting" => Ok(MaskPhase::Waiting),
+            "Terminating" => Ok(MaskPhase::Terminating),
             "ErrNoProviders" => Ok(MaskPhase::ErrNoProviders),
             _ => Err(()),
         }
@@ -92,6 +97,7 @@ impl fmt::Display for MaskPhase {
             MaskPhase::Pending => write!(f, "Pending"),
             MaskPhase::Active => write!(f, "Active"),
             MaskPhase::Waiting => write!(f, "Waiting"),
+            MaskPhase::Terminating => write!(f, "Terminating"),
             MaskPhase::ErrNoProviders => write!(f, "ErrNoProviders"),
         }
     }

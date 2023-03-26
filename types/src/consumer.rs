@@ -30,7 +30,7 @@ pub struct AssignedProvider {
     /// Name of the [`Secret`](k8s_openapi::api::core::v1::Secret) resource
     /// which contains environment variables to be injected into a
     /// [gluetun](https://github.com/qdm12/gluetun) container. The controller
-    /// will create this in the same namespace as the [`Mask`] resource.
+    /// will create this in the same namespace as the [`MaskConsumer`] resource.
     /// Its contents mirror that of the [`Secret`](k8s_openapi::api::core::v1::Secret)
     /// referenced by [`MaskProviderSpec::secret`].
     pub secret: String,
@@ -38,21 +38,25 @@ pub struct AssignedProvider {
 
 /// [`MaskConsumerSpec`] describes the configuration for a [`MaskConsumer`] resource,
 /// which is used to garbage collect resources that consume VPN credentials when they
-/// are unassigned from a [`Mask`]. This resource will always have a `Mask` as its owner.
-/// It corresponds with a singular [`MaskReservation`] resource in the [`MaskProvider`]'s
+/// are unassigned from a [`Mask`]. This resource will always have a [`Mask`] as its owner.
+/// It corresponds to a singular [`MaskReservation`] resource in the [`MaskProvider`]'s
 /// namespace, which reserves a slot with the provider.
 ///
-/// The [`MaskConsumer`] is the first resource to be allocated during assignment. Once
-/// a [`MaskProvider`] has been assigned to [`MaskConsumerStatus::provider`], the controller
-/// will update the [`MaskStatus::consumer`] to point to the [`MaskConsumer`]. This order
-/// is important because the [`MaskReservation`] reserving the slot will be garbage collected
-/// if the [`MaskConsumer`] doesn't exist.
+/// The [`MaskConsumer`] is allocated without an assigned provider. Once a [`MaskProvider`]
+/// has been assigned in [`MaskConsumerStatus::provider`], the credentials will be ready to use.
+/// This order is important because the [`MaskReservation`] reserving the slot will be garbage
+/// collected if the [`MaskConsumer`] doesn't exist, and vise versa.
 ///
 /// [`MaskConsumer`] resources are created by the controller. Any resources that consume
 /// VPN credentials should have an owner reference to it - either directly or indirectly
 /// through one of its parents - that way any connections to the service will be guaranteed
 /// severed before the slot is reprovisioned. This paradigm allows garbage collection to be
-/// agnostic to how credentials are consumed.
+/// agnostic to how credentials are consumed. For example, you could create and manage your
+/// own `Pod` directly, or you could structure your work as a `Job` that indirectly creates
+/// a child `Pod`. As long as there is only one container actively consuming the credentials,
+/// the [`MaskProvider`]'s [`spec.maxSlots`](MaskProviderSpec::max_slots) will be respected.
+/// This is important for some VPN services that allow unlimited connections but reserve the
+/// right to ban you if you utilize automation to create a massive number of connections.
 #[derive(CustomResource, Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 #[kube(
     group = "vpn.beebs.dev",

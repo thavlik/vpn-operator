@@ -34,7 +34,7 @@ pub async fn active(client: Client, instance: &MaskConsumer) -> Result<(), Error
 pub async fn terminating(client: Client, instance: &MaskConsumer) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.phase = Some(MaskConsumerPhase::Terminating);
-        status.message = Some("Resource deletion is pending garbage collection.".to_owned());
+        status.message = Some(messages::TERMINATING.to_owned());
     })
     .await?;
     Ok(())

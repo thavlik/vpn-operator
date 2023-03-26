@@ -2,6 +2,10 @@
 /// is in the `Pending` phase.
 pub const PENDING: &str = "Resource first appeared to the controller.";
 
+/// User-friendly message to display in `status.message` whenever a resource's
+/// deletion is pending garbage collection.
+pub const TERMINATING: &str = "Resource deletion is pending garbage collection.";
+
 /// User-friendly message to display in `status.message` whenever a `Mask`
 /// or `MaskConsumer` is in the `Waiting` phase.
 pub const WAITING: &str = "Waiting on a slot from a MaskProvider.";

@@ -27,7 +27,7 @@ pub async fn active(client: Client, instance: &MaskReservation) -> Result<(), Er
 pub async fn terminating(client: Client, instance: &MaskReservation) -> Result<(), Error> {
     patch_status(client, instance, |status| {
         status.phase = Some(MaskReservationPhase::Terminating);
-        status.message = Some("Resource deletion is pending garbage collection.".to_owned());
+        status.message = Some(messages::TERMINATING.to_owned());
     })
     .await?;
     Ok(())

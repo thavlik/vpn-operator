@@ -31,18 +31,18 @@ spec:
             description: '[`MaskProviderSpec`] is the configuration for the [`MaskProvider`] resource, which represents a VPN service provider. It specifies a reference to a [`Secret`](k8s_openapi::api::core::v1::Secret) containing the credentials for connecting to the VPN service, as well as other important details like the maximum number of clients that can connect with the credentials at the same time.'
             properties:
               maxSlots:
-                description: Maximum number of [`Mask`] resources that can be assigned this [`MaskProvider`] at any given time. Used to prevent excessive connections to the VPN service, which could result in account suspension with some providers.
+                description: Maximum number of [`MaskConsumer`] resources that can be assigned this [`MaskProvider`] at any given time. Used to prevent excessive connections to the VPN service, which could result in account suspension with some providers.
                 format: uint
                 minimum: 0.0
                 type: integer
               namespaces:
-                description: Optional list of namespaces that are allowed to use this [`MaskProvider`]. If unset, all namespaces are allowed.
+                description: Optional list of namespaces that are allowed to use this [`MaskProvider`]. Even if the [`Mask`] expresses a preference for this provider in [`MaskSpec::providers`], it can only be assigned if it's in one of these namespaces. If unset, all [`Mask`] namespaces are permitted.
                 items:
                   type: string
                 nullable: true
                 type: array
               secret:
-                description: Reference to a [`Secret`](k8s_openapi::api::core::v1::Secret) resource containing the env vars that will be injected into the [gluetun](https://github.com/qdm12/gluetun) container.
+                description: Reference to a [`Secret`](k8s_openapi::api::core::v1::Secret) resource containing the env vars that will be injected into the [gluetun](https://github.com/qdm12/gluetun) container. The contents of this `Secret` will be copied to the namespace of any [`MaskConsumer`] that reserves a slot with the provider. The created `Secret` is owned by the `MaskConsumer` and will automatically be deleted whenever the [`MaskConsumer`] is deleted, which happens when the provider is unassigned or the [`Mask`] itself is deleted.
                 type: string
               tags:
                 description: |-
@@ -54,7 +54,7 @@ spec:
                 nullable: true
                 type: array
               verify:
-                description: VPN service verification options. Used to ensure the credentials are valid before assigning the [`MaskProvider`] to [`Mask`] resources.
+                description: VPN service verification options. Used to ensure the credentials are valid before assigning the [`MaskProvider`] to [`Mask`] resources. Enabled by default. Set [`skip=true`](MaskProviderVerifySpec::skip) to disable verification.
                 nullable: true
                 properties:
                   interval:

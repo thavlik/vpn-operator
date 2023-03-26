@@ -193,7 +193,10 @@ async fn reconcile(instance: Arc<Mask>, context: Arc<ContextData>) -> Result<Act
             Action::requeue(Duration::ZERO)
         }
         MaskAction::Delete => {
-            // Note: we don't need to manually delete the MaskConsumer resource.
+            // Show that the `Mask` is being terminated.
+            actions::terminating(client.clone(), &instance).await?;
+
+            // Note: we don't need to manually delete the `MaskConsumer` resource.
             // Kubernetes will delete it automatically because of the owner reference.
 
             // Remove the finalizer, which will allow the Mask resource to be deleted.

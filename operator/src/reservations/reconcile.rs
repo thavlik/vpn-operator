@@ -1,9 +1,8 @@
 use chrono::Utc;
 use futures::stream::StreamExt;
-use kube::Resource;
-use kube::ResourceExt;
 use kube::{
     api::ListParams, client::Client, runtime::controller::Action, runtime::Controller, Api,
+    ResourceExt,
 };
 use std::sync::Arc;
 use tokio::time::Duration;
@@ -290,7 +289,7 @@ async fn determine_action(
     _namespace: &str,
     instance: &MaskReservation,
 ) -> Result<ReservationAction, Error> {
-    if instance.meta().deletion_timestamp.is_some() {
+    if instance.metadata.deletion_timestamp.is_some() {
         return Ok(ReservationAction::Delete {
             delete_resource: false,
         });

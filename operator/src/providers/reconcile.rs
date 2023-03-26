@@ -4,7 +4,7 @@ use k8s_openapi::api::core::v1::{Pod, PodStatus, Secret};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::{
     api::ListParams, client::Client, runtime::controller::Action, runtime::Controller, Api,
-    Resource, ResourceExt,
+    ResourceExt,
 };
 use lazy_static::lazy_static;
 use std::sync::Arc;
@@ -412,7 +412,7 @@ async fn determine_action(
     namespace: &str,
     instance: &MaskProvider,
 ) -> Result<MaskProviderAction, Error> {
-    if instance.meta().deletion_timestamp.is_some() {
+    if instance.metadata.deletion_timestamp.is_some() {
         return Ok(MaskProviderAction::Delete);
     }
 

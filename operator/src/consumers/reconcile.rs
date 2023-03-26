@@ -1,9 +1,8 @@
 use chrono::Utc;
 use futures::stream::StreamExt;
 use k8s_openapi::api::core::v1::Secret;
-use kube::Resource;
-use kube::ResourceExt;
 use kube::{
+    ResourceExt,
     api::ListParams, client::Client, runtime::controller::Action, runtime::Controller, Api,
 };
 use std::sync::Arc;
@@ -290,6 +289,43 @@ pub fn get_consumer_phase(instance: &MaskConsumer) -> Result<(MaskConsumerPhase,
     Ok((phase, age.to_std()?))
 }
 
+/// Determines if any provider-related actions are needed for the MaskConsumer.
+async fn determine_provider_action(
+    client: Client,
+    namespace: &str,
+    instance: &MaskConsumer,
+) -> Result<Option<ConsumerAction>, Error> {
+    // See if the MaskConsumer should be assigned a MaskProvider.
+    let provider = match get_assigned_provider(instance) {
+        // We need to assign a MaskProvider to this MaskConsumer.
+        None => return Ok(Some(ConsumerAction::Assign)),
+        // MaskProvider has already been assigned.
+        Some(p) => p,
+    };
+
+    // Ensure the MaskReservation that reserves the slot for the MaskConsumer exists.
+    // If it does not exist, we should delete this MaskConsumer immediately.
+    if get_reservation(client.clone(), provider).await?.is_none() {
+        // MaskReservation has been deleted, so we should delete this MaskConsumer.
+        return Ok(Some(ConsumerAction::Delete {
+            delete_resource: true,
+        }));
+    }
+
+    // Ensure the Secret containing the env credentials exists.
+    // The Secret should exist in the same namespace as the MaskConsumer.
+    if get_secret(client, namespace, &provider.secret)
+        .await?
+        .is_none()
+    {
+        // The credentials secret doesn't exist, so we should create it.
+        return Ok(Some(ConsumerAction::CreateSecret));
+    }
+
+    // No provider-related actions necessary.
+    Ok(None)
+}
+
 /// Resources arrives into reconciliation queue in a certain state. This function looks at
 /// the state of given `MaskConsumer` resource and decides which actions needs to be performed.
 /// The finite set of possible actions is represented by the `ConsumerAction` enum.
@@ -302,7 +338,7 @@ async fn determine_action(
     namespace: &str,
     instance: &MaskConsumer,
 ) -> Result<ConsumerAction, Error> {
-    if instance.meta().deletion_timestamp.is_some() {
+    if instance.metadata.deletion_timestamp.is_some() {
         return Ok(ConsumerAction::Delete {
             delete_resource: false,
         });
@@ -315,27 +351,9 @@ async fn determine_action(
         return Ok(ConsumerAction::Pending);
     }
 
-    // See if the MaskConsumer should be assigned a MaskProvider.
-    let provider = match get_assigned_provider(instance) {
-        // We need to assign a MaskProvider to this MaskConsumer.
-        None => return Ok(ConsumerAction::Assign),
-        // MaskProvider has already been assigned.
-        Some(p) => p,
-    };
-
-    // Ensure the MaskReservation that reserves the slot for the MaskConsumer exists.
-    // If it does not exist, we should delete this MaskConsumer immediately.
-    if get_reservation(client.clone(), provider).await?.is_none() {
-        // MaskReservation has been deleted, so we should delete this MaskConsumer.
-        return Ok(ConsumerAction::Delete {
-            delete_resource: true,
-        });
-    }
-
-    // Ensure the Secret containing the env credentials exists.
-    // The Secret should exist in the same namespace as the MaskConsumer.
-    if get_secret(client, namespace, provider).await?.is_none() {
-        return Ok(ConsumerAction::CreateSecret);
+    // Check if there are any provider-related actions to take.
+    if let Some(action) = determine_provider_action(client, namespace, instance).await? {
+        return Ok(action);
     }
 
     // Keep the Active status up-to-date.
@@ -345,15 +363,11 @@ async fn determine_action(
 /// Gets the Secret that contains the credentials for the Mask.
 /// Even if the Secret exists, this may still return None if
 /// the Secret's provider label doesn't match the expected uid.
-async fn get_secret(
-    client: Client,
-    namespace: &str,
-    provider: &AssignedProvider,
-) -> Result<Option<Secret>, Error> {
+async fn get_secret(client: Client, namespace: &str, name: &str) -> Result<Option<Secret>, Error> {
     let api: Api<Secret> = Api::namespaced(client, namespace);
     // Because the Secret's name includese the uid, we don't
     // have the to check the resource labels for a match.
-    match api.get(&provider.secret).await {
+    match api.get(name).await {
         Ok(secret) => Ok(Some(secret)),
         Err(kube::Error::Api(ae)) if ae.code == 404 => Ok(None),
         Err(e) => Err(e.into()),

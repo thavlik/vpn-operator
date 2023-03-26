@@ -268,7 +268,7 @@ Any `Pod` that uses a `Mask` should reference its `MaskConsumer` in [`metadata.o
 Your `Mask` should have an owner reference to your custom resource, and your `Pod` should have owner references to the created `MaskConsumer` and (optionally) the aforementioned custom resource as well. Your custom resource should be the only owner reference you create with `controller=true`, as your controller is responsible for managing the `Mask` and `Pod` resources it creates. Owner references with `controller=false` exist strictly for garbage collection purposes.
 
 ### Credentials secret (im)mutability
-The `Secret` referenced by a `MaskProvider` should be considered immutable as changes to it are not propagated to the `Secret`s owned by `MaskConsumer`s in other namespaces. Keep this in mind if you find yourself modifying a provider credentials `Secret`.
+The `Secret` referenced by a `MaskProvider` should be considered immutable as changes to it are not propagated to the `Secret`s owned by `MaskConsumer`s in other namespaces. Keep this in mind if you find yourself modifying a provider credentials.
 
 ### Performance metrics
 These are names and descriptions of [Prometheus](https://prometheus.io/) metrics collected by the controllers:

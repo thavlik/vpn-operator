@@ -97,7 +97,8 @@ spec:
   # the Secret's data as environment variables into a gluetun container
   # and probing an IP service until it returns something different from
   # the initial/unmasked IP address.
-  # Note: all of these fields are optional.
+  # Note: all of these fields are optional, and credentials verification
+  # is enabled by default.
   verify:
     # Set to true to bypass credentials verification. This will allow
     # the structure of the Secret to be anything you want, and the
@@ -115,7 +116,11 @@ spec:
     # the process of regularly verifying the credentials are valid.
     # Note that verification will create a Mask in order to reserve
     # a slot with the MaskProvider. Verification will be delayed until
-    # the slot is reserved, as to not exceed `maxSlots` connections. 
+    # the slot is reserved, as to not exceed `maxSlots` connections.
+    # If you keep a close eye on your VPN account's status (such as
+    # by periodically connecting from your local PC) then you should
+    # omit this field. Verification requires reserving a slot with the
+    # provider, and this will slow your application's overall progress.
     interval: 24h
 
     # The following enables customization of the verification Pod

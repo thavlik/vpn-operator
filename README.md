@@ -85,7 +85,7 @@ spec:
   # to select this service at the exclusion of others. This MaskProvider
   # will match the tags "default", "preferred", and "my-vpn", which
   # in effect establishes a set of use cases for this MaskProvider.
-  # These values can be anything. This field is necessary because a
+  # These values are arbitrary. This field is necessary because a
   # Mask and its desired MaskProvider(s) can be in different namespaces.
   tags:
     - default

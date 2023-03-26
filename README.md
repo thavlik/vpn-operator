@@ -73,10 +73,12 @@ spec:
   secret: my-vpn-credentials
   
   # In this example, the contractual terms with NordVPN allows up to
-  # six devices to be active simultaneously, and we want to reserve
-  # a single slot for our local machine. This limit is a requirement.
-  # You shouldn't attempt to create an obscene number of connections.
-  # Always set this to sane value for your purposes. 
+  # six devices to be active simultaneously, and we want to use one
+  # less so we can still cloak our local machine's IP when desired.
+  # This limit is a requirement. You shouldn't attempt to create an
+  # obscene number of connections; most providers likely reserve the
+  # right to ban your account for abuse if you try and initialize
+  # too many. Always set this to a sane value for your purposes.
   maxSlots: 5
 
   # You can optionally specify tag(s) so that Masks have the ability

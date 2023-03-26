@@ -22,7 +22,7 @@ pub(crate) const PROVIDER_UID_LABEL: &str = "vpn.beebs.dev/owner";
 /// Name of the kubernetes resource manager.
 pub(crate) const MANAGER_NAME: &str = "vpn-operator";
 
-/// A label that a Mask will have in order to be assigned
-/// a Provider that any phase other than Active. The value
-/// must correspond to the UUID of the Provider being verified.
+/// A label that a Mask/MaskConsumer must have in order to force
+/// assignment to a MaskProvider with a specific uid, even if the
+/// MaskProvider has no open slots.
 pub(crate) const VERIFICATION_LABEL: &str = "vpn.beebs.dev/verify";

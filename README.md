@@ -119,8 +119,8 @@ spec:
     # the slot is reserved, as to not exceed `maxSlots` connections.
     # If you keep a close eye on your VPN account's status (such as
     # by periodically connecting from your local PC) then you should
-    # omit this field. Verification requires reserving a slot with the
-    # provider, and this will slow your application's overall progress.
+    # omit this field, as redundant verifications will merely slow your
+    # application's overall progress.
     interval: 24h
 
     # The following enables customization of the verification Pod

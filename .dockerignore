@@ -1,9 +1,12 @@
+/chart
 /crds
+/secrets
+/scripts
 target/
 .idea/
 .vscode/
-secrets/
 .gitignore
+.dockerignore
 kindest.yaml
 LICENSE*
 README*

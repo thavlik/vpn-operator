@@ -5,6 +5,7 @@ keywords:
   - operator
   - controller
   - privacy
+  - proxy
 name: vpn-operator
 version: 0.0.1
 maintainers:

@@ -181,7 +181,10 @@ async fn reconcile(
     // This is the write phase of reconciliation.
     let result = match action {
         ReservationAction::Pending => {
-            // Add the finalizer.
+            // Add the finalizer. This will prevent the reservation from
+            // being deleted before the associated MaskConsumer is removed,
+            // effectively preventing the slot from being reprovisioned until
+            // we know for sure that the connection is severed.
             let instance = finalizer::add(client.clone(), &name, &namespace).await?;
 
             // Update the phase to Pending.

@@ -194,13 +194,13 @@ pub async fn terminating(client: Client, instance: &MaskProvider) -> Result<(), 
 
 /// Updates the MaskProvider's phase to ErrSecretNotFound, which indicates
 /// the VPN provider is ready to use.
-pub async fn secret_missing(
+pub async fn secret_not_found(
     client: Client,
     instance: &MaskProvider,
-    secret_name: &str,
 ) -> Result<(), Error> {
+    let message = format!("Secret '{}' does not exist.", instance.spec.secret);
     patch_status(client, instance, |status| {
-        status.message = Some(format!("Secret '{}' does not exist.", secret_name));
+        status.message = Some(message);
         status.phase = Some(MaskProviderPhase::ErrSecretNotFound);
     })
     .await?;

@@ -238,7 +238,7 @@ async fn reconcile(
         }
         ConsumerAction::Assign => {
             // Assign a new provider to the MaskConsumer.
-            if !actions::assign_provider(client.clone(), &name, &namespace, &instance).await? {
+            if !actions::assign_provider(client, &name, &namespace, &instance).await? {
                 // Failed to assign a provider. Wait a bit and retry.
                 return Ok(Action::requeue(PROBE_INTERVAL));
             }
@@ -248,7 +248,7 @@ async fn reconcile(
         }
         ConsumerAction::CreateSecret => {
             // Create the credentials env secret in the MaskConsumer's namespace.
-            actions::create_secret(client.clone(), &namespace, &instance).await?;
+            actions::create_secret(client, &namespace, &instance).await?;
 
             // Requeue immediately to set the phase to Active.
             Action::requeue(Duration::ZERO)

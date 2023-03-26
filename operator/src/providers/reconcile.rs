@@ -103,7 +103,7 @@ enum MaskProviderAction {
     Delete,
 
     /// Set the `MaskProvider` resource status.phase to ErrSecretNotFound.
-    SecretNotFound(String),
+    SecretNotFound,
 
     /// Create a Mask to reserve a slot for verification.
     CreateVerifyMask,
@@ -138,7 +138,7 @@ impl MaskProviderAction {
         match self {
             MaskProviderAction::Pending => "Pending",
             MaskProviderAction::Delete => "Delete",
-            MaskProviderAction::SecretNotFound(_) => "SecretNotFound",
+            MaskProviderAction::SecretNotFound => "SecretNotFound",
             MaskProviderAction::CreateVerifyMask => "CreateVerifyMask",
             MaskProviderAction::CreateVerifyPod(_) => "CreateVerifyPod",
             MaskProviderAction::Verifying { .. } => "Verifying",
@@ -253,9 +253,9 @@ async fn reconcile(
             // No need to requeue as the resource is being deleted.
             Action::await_change()
         }
-        MaskProviderAction::SecretNotFound(secret_name) => {
+        MaskProviderAction::SecretNotFound => {
             // Reflect the error in the status object.
-            actions::secret_missing(client, &instance, &secret_name).await?;
+            actions::secret_not_found(client, &instance).await?;
 
             // Requeue after a while if the resource doesn't change.
             Action::requeue(PROBE_INTERVAL)
@@ -434,9 +434,7 @@ async fn determine_action(
     {
         // The resource specifies using a Secret that doesn't exist.
         // This is the only error state for the MaskProvider resource.
-        return Ok(MaskProviderAction::SecretNotFound(
-            instance.spec.secret.clone(),
-        ));
+        return Ok(MaskProviderAction::SecretNotFound);
     }
 
     // Check if the MaskProvider requires verification.

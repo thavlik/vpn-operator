@@ -113,7 +113,7 @@ spec:
     # necessary, but this example will dial the service once a day
     # just to keep the status up to date. This would be most useful
     # if you had a large number of services and you want to automate
-    # the process of regularly verifying the credentials are valid.
+    # the process of regularly ensuring the credentials are valid.
     # Note that verification will create a Mask in order to reserve
     # a slot with the MaskProvider. Verification will be delayed until
     # the slot is reserved, as to not exceed `maxSlots` connections.

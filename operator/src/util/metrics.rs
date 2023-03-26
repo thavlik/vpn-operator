@@ -14,22 +14,26 @@ impl ControllerMetrics {
             &format!("{}_{}_reconcile_counter", prefix, tag),
             "Number of reconciliations by the controller.",
             &["name", "namespace"]
-        ).unwrap();
+        )
+        .unwrap();
         let action_counter = register_counter_vec!(
             &format!("{}_{}_action_counter", prefix, tag),
             "Number of actions taken by the controller.",
             &["name", "namespace", "action"]
-        ).unwrap();
+        )
+        .unwrap();
         let read_histogram = register_histogram_vec!(
             &format!("{}_{}_read_duration_seconds", prefix, tag),
             "Read phase latency of the controller.",
             &["name", "namespace", "action"]
-        ).unwrap();
+        )
+        .unwrap();
         let write_histogram = register_histogram_vec!(
             &format!("{}_{}_write_duration_seconds", prefix, tag),
             "Write phase latency of the controller.",
             &["name", "namespace", "action"]
-        ).unwrap();
+        )
+        .unwrap();
         ControllerMetrics {
             reconcile_counter,
             action_counter,

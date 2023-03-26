@@ -71,11 +71,11 @@ impl ContextData {
             return ContextData {
                 client,
                 metrics: ControllerMetrics::new("consumers"),
-            }
+            };
         }
         #[cfg(not(feature = "metrics"))]
         {
-            return ContextData { client }
+            return ContextData { client };
         }
     }
 }
@@ -158,7 +158,9 @@ async fn reconcile(
 
     // Increment total number of reconciles for the MaskConsumer resource.
     #[cfg(feature = "metrics")]
-    context.metrics.reconcile_counter
+    context
+        .metrics
+        .reconcile_counter
         .with_label_values(&[&name, &namespace])
         .inc();
 
@@ -175,13 +177,17 @@ async fn reconcile(
 
     // Report the read phase performance.
     #[cfg(feature = "metrics")]
-    context.metrics.read_histogram
+    context
+        .metrics
+        .read_histogram
         .with_label_values(&[&name, &namespace, action.to_str()])
         .observe(start.elapsed().as_secs_f64());
 
     // Increment the counter for the action.
     #[cfg(feature = "metrics")]
-    context.metrics.action_counter
+    context
+        .metrics
+        .action_counter
         .with_label_values(&[&name, &namespace, action.to_str()])
         .inc();
 
@@ -192,7 +198,9 @@ async fn reconcile(
         ConsumerAction::NoOp => None,
         // Start a performance timer for the write phase.
         _ => Some(
-            context.metrics.write_histogram
+            context
+                .metrics
+                .write_histogram
                 .with_label_values(&[&name, &namespace, action.to_str()])
                 .start_timer(),
         ),

@@ -314,7 +314,7 @@ Note the `MaskReservation` resource is for internal use only by the controller. 
 ### Uninstallation
 For full removal of vpn-operator from your cluster:
 ```bash
-# Remove the chart release first.
+# Remove the chart release.
 helm delete -n vpn vpn
 
 # (Optional) delete the namespace. Assuming you have

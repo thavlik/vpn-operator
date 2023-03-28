@@ -95,9 +95,6 @@ pub struct MaskConsumerStatus {
 
     /// Details about the assigned provider and credentials.
     pub provider: Option<AssignedProvider>,
-
-    /// Name of the Pod that is consuming the credentials.
-    pub pod: Option<String>,
 }
 
 /// A short description of the [`MaskConsumer`] resource's current state.

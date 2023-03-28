@@ -215,9 +215,7 @@ prometheus:
 # fine-tuning for future releases, but should be more than
 # enough for most scenarios.
 controllers:
-  # The Mask and MaskProvider resources have separate Deployments.
-  # This improves scaling and allows you to configure their
-  # resource budgets separately.
+  # Controller for the Mask custom resource.
   masks:
     resources:
       requests:
@@ -226,6 +224,9 @@ controllers:
       limits:
         memory: 64Mi
         cpu: 100m
+  
+  # Controller for the MaskProvider custom resource. It automates
+  # the verification of a provider's credentials.
   providers:
     resources:
       requests:
@@ -237,8 +238,8 @@ controllers:
 
   # The MaskReservation controller is for garbage collection.
   # It will delete any MaskReservations that point to MaskConsumers
-  # that no longer exist. You never create MaskReservations, the
-  # controller manages it automatically.
+  # that no longer exist. You should never create a MaskReservation
+  # as the controller manages them automatically.
   reservations:
     resources:
       requests:

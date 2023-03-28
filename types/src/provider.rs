@@ -205,13 +205,13 @@ impl FromStr for MaskProviderPhase {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Pending" => Ok(MaskProviderPhase::Pending),
-            "ErrSecretNotFound" => Ok(MaskProviderPhase::ErrSecretNotFound),
             "Verifying" => Ok(MaskProviderPhase::Verifying),
             "Verified" => Ok(MaskProviderPhase::Verified),
-            "ErrVerifyFailed" => Ok(MaskProviderPhase::ErrVerifyFailed),
             "Ready" => Ok(MaskProviderPhase::Ready),
             "Active" => Ok(MaskProviderPhase::Active),
             "Terminating" => Ok(MaskProviderPhase::Terminating),
+            "ErrSecretNotFound" => Ok(MaskProviderPhase::ErrSecretNotFound),
+            "ErrVerifyFailed" => Ok(MaskProviderPhase::ErrVerifyFailed),
             _ => Err(()),
         }
     }
@@ -221,13 +221,13 @@ impl fmt::Display for MaskProviderPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MaskProviderPhase::Pending => write!(f, "Pending"),
-            MaskProviderPhase::ErrSecretNotFound => write!(f, "ErrSecretNotFound"),
             MaskProviderPhase::Verifying => write!(f, "Verifying"),
             MaskProviderPhase::Verified => write!(f, "Verified"),
-            MaskProviderPhase::ErrVerifyFailed => write!(f, "ErrVerifyFailed"),
             MaskProviderPhase::Ready => write!(f, "Ready"),
             MaskProviderPhase::Active => write!(f, "Active"),
             MaskProviderPhase::Terminating => write!(f, "Terminating"),
+            MaskProviderPhase::ErrSecretNotFound => write!(f, "ErrSecretNotFound"),
+            MaskProviderPhase::ErrVerifyFailed => write!(f, "ErrVerifyFailed"),
         }
     }
 }

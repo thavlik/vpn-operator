@@ -61,10 +61,6 @@ spec:
                 - ErrNoProviders
                 nullable: true
                 type: string
-              pod:
-                description: Name of the Pod that is consuming the credentials.
-                nullable: true
-                type: string
               provider:
                 description: Details about the assigned provider and credentials.
                 nullable: true

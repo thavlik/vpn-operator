@@ -276,7 +276,7 @@ Your `Mask` should have an owner reference to your custom resource, and your `Po
 The `Secret` referenced by a `MaskProvider` should be considered immutable as changes to it are not propagated to the `Secret`s owned by `MaskConsumer`s in other namespaces. Keep this in mind if you find yourself modifying a provider credentials.
 
 ### Performance metrics
-These are names and descriptions of [Prometheus](https://prometheus.io/) metrics collected by the controllers:
+These are names and descriptions of [Prometheus](https://prometheus.io/) metrics collected by the controllers. The prefix can be overridden by changing the `METRICS_PREFIX` environment variable, which has a default value of `vpno`.
 - **`vpno_masks_reconcile_counter`**: Number of reconciliations by the `Mask` controller.
 - **`vpno_masks_action_counter`**: Number of actions taken by the `Mask` controller.
 - **`vpno_masks_read_duration_seconds`**: Amount of time taken by the read phase of the `Mask` controller.

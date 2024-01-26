@@ -2,6 +2,7 @@
 [<img src="https://img.shields.io/badge/maintenance%20status-actively%20developed-brightgreen">](https://github.com/thavlik/vpn-operator)
 [<img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg">](./LICENSE)
 [<img src="https://img.shields.io/badge/License-MIT-yellow.svg">](./LICENSE-MIT)
+[<img src="https://img.shields.io/badge/Language-rust-red.svg">](https://www.rust-lang.org/)
 
 > Note that everything is experimental and may change at any time.
 

@@ -6,7 +6,7 @@
 
 > Update 2/1/2024: Version `1.0.1` released.
 
-[Kubernetes](https://kubernetes.io/) operator for [VPN](https://en.wikipedia.org/wiki/Virtual_private_network) sidecars written in pure [Rust](https://www.rust-lang.org/). This operator simplifies the process of hiding your pods behind one or more VPN services. Instead of assigning the same exact VPN sidecar to every pod you want cloaked, you use the included `Mask` and `MaskProvider` Custom Resources to automate credentials distribution across any number of pods and VPN service providers.
+This is a [Kubernetes](https://kubernetes.io/) operator for [VPN](https://en.wikipedia.org/wiki/Virtual_private_network) sidecars written in pure [Rust](https://www.rust-lang.org/). This operator simplifies the process of hiding your pods behind one or more VPN services. Instead of assigning the same exact VPN sidecar to every pod you want cloaked, you use the included `Mask` and `MaskProvider` Custom Resources to automate credentials distribution across any number of pods and VPN service providers.
 
 This project is ideal for applications that need to provision VPN-connected pods, like [ytdl-operator](https://github.com/thavlik/ytdl-operator).
 

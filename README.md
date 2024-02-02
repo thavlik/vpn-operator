@@ -4,7 +4,7 @@
 [<img src="https://img.shields.io/badge/License-MIT-lightblue.svg">](./LICENSE-MIT)
 [<img src="https://img.shields.io/badge/Language-rust-red.svg">](https://www.rust-lang.org/)
 
-> Update 2/1/2024: Version `1.0.1` released.
+> **UPDATE FEB 2, 2024: VERSION `1.0.1` RELEASED.**
 
 This is a [Kubernetes](https://kubernetes.io/) operator for [VPN](https://en.wikipedia.org/wiki/Virtual_private_network) sidecars written in pure [Rust](https://www.rust-lang.org/). This operator simplifies the process of hiding your pods behind one or more VPN services. Instead of assigning the same exact VPN sidecar to every pod you want cloaked, you use the included `Mask` and `MaskProvider` Custom Resources to automate credentials distribution across any number of pods and VPN service providers.
 

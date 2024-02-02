@@ -13,12 +13,12 @@ This project is ideal for applications that need to provision VPN-connected pods
 ## Installation
 1. Clone the repository:
 ```bash
-git clone https://github.com/thavlik/vpn-operator
-cd vpn-operator
+$ git clone https://github.com/thavlik/vpn-operator
+$ cd vpn-operator
 ```
 2. Install the [Custom Resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) Definitions:
 ```bash
-kubectl apply -f crds/
+$ kubectl apply -f crds/
 ```
 3. Install the vpn-operator [Helm chart](https://helm.sh/):
 ```bash

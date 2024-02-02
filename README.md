@@ -42,11 +42,11 @@ EOF
 $ RELEASE_NAME=vpn
 $ CHART_PATH=chart/
 $ helm install \
-  $RELEASE_NAME \
-  $CHART_PATH \
-  --namespace=vpn \
-  --create-namespace \
-  -f values.yaml
+    $RELEASE_NAME \
+    $CHART_PATH \
+    --namespace=vpn \
+    --create-namespace \
+    -f values.yaml
 ```
 
 ## Usage

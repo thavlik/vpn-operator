@@ -1,8 +1,8 @@
 # vpn-operator
 [<img src="https://img.shields.io/badge/maintenance%20status-actively%20developed-brightgreen">](https://github.com/thavlik/vpn-operator)
+[<img src="https://img.shields.io/badge/Language-rust-red.svg">](https://www.rust-lang.org/)
 [<img src="https://img.shields.io/badge/License-Apache_2.0-orange.svg">](./LICENSE)
 [<img src="https://img.shields.io/badge/License-MIT-lightblue.svg">](./LICENSE-MIT)
-[<img src="https://img.shields.io/badge/Language-rust-red.svg">](https://www.rust-lang.org/)
 
 > **UPDATE FEB 2, 2024: VERSION `1.0.1` RELEASED.**
 

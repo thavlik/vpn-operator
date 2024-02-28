@@ -28,7 +28,7 @@ Tests can run locally or in a pod with admin privileges. To run the end-to-end t
 #export KUBECONFIG="$HOME/.kube/config"
 cargo test
 ```
-If you have real VPN credentials, you want to use in the tests, specify the environment variables `SECRET_NAME` and `SECRET_NAMESPACE` to point to the in-cluster `Secret` resource containing the credentials. If you name your `Secret` resource `vpn/actual-vpn-cred`, you can use the convenience script at [`../scripts/test-actual.sh`](../scripts/test-actual.sh):
+It is possible to run the tests with arbitrary VPN credentials. To test any VPN provider, specify the environment variables `SECRET_NAME` and `SECRET_NAMESPACE`. Their values must point to the in-cluster `Secret` resource that contains the credentials. If you create the `Secret` resource `vpn/actual-vpn-cred`, you can use the convenience script at [`../scripts/test-actual.sh`](../scripts/test-actual.sh):
 ```bash
 #!/bin/bash
 set -euo pipefail

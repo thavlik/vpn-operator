@@ -11,11 +11,11 @@ docker build \
     .
 ```
 
-### Kindest
-This project uses my [custom toolchain](https://github.com/midcontinentcontrols/kindest). Build it with a single command:
+### kb
+This project uses my [custom toolchain](https://github.com/midcontinentcontrols/kb). Build it with a single command:
 ```bash
 # pass -v (--verbose) to print docker build logs
-kindest build -v
+kb -v
 ```
 
 ## Generating CRDs

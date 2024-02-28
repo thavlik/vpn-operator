@@ -7,6 +7,6 @@ target/
 .vscode/
 .gitignore
 .dockerignore
-kindest.yaml
+kb.yaml
 LICENSE*
 README*

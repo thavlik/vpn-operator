@@ -12,7 +12,7 @@ docker build \
 ```
 
 ### kb
-This project uses my [custom toolchain](https://github.com/midcontinentcontrols/kb). Build it with a single command:
+This project makes use of a [custom toolchain](https://github.com/midcontinentcontrols/kb) to simplify its DevOps. Build it with the `kb` command:
 ```bash
 # pass -v (--verbose) to print docker build logs
 kb -v

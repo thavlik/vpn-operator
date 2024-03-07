@@ -5,7 +5,7 @@ jobs:
   Check-Formatting:
     runs-on: ubuntu-latest
     steps:
-      - run: apt update && apt install -y rustfmt
+      - run: sudo apt-get update && sudo apt-get install -y rustfmt
       - name: vpn-types subcrate
         run: rustfmt --edition 2021 --check types/src/lib.rs
       - name: vpn-operator subcrate

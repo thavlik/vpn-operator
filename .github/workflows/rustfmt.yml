@@ -3,7 +3,10 @@ run-name: Ensure rustfmt check passes
 on: [push]
 jobs:
   Check-Formatting:
-    runs-on: rust-latest
+    runs-on: ubuntu-latest
     steps:
-      - run: rustup component add rustfmt
-      - run: rustfmt --edition 2021 --check operator/src/main.rs
+      - run: apt update && apt install -y rustfmt
+      - name: vpn-types subcrate
+        run: rustfmt --edition 2021 --check types/src/lib.rs
+      - name: vpn-operator subcrate
+        run: rustfmt --edition 2021 --check operator/src/main.rs

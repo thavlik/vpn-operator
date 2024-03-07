@@ -5,11 +5,11 @@ jobs:
   Check-Formatting:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - run: sudo apt-get update && sudo apt-get install -y rustfmt
-      - run: ls -al $GITHUB_WORKSPACE
-      - run: cd $GITHUB_WORKSPACE && find .
-      - name: vpn-types subcrate
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install rustfmt
+        run: sudo apt-get update && sudo apt-get install -y rustfmt
+      - name: Check vpn-types subcrate
         run: rustfmt --edition 2021 --check $GITHUB_WORKSPACE/types/src/lib.rs
-      - name: vpn-operator subcrate
+      - name: Check vpn-operator subcrate
         run: rustfmt --edition 2021 --check $GITHUB_WORKSPACE/operator/src/main.rs

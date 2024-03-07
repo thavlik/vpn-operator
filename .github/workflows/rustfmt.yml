@@ -5,6 +5,7 @@ jobs:
   Check-Formatting:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
       - run: sudo apt-get update && sudo apt-get install -y rustfmt
       - run: ls -al $GITHUB_WORKSPACE
       - run: cd $GITHUB_WORKSPACE && find .

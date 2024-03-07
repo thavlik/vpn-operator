@@ -9,7 +9,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Install rustfmt
         run: sudo apt-get update && sudo apt-get install -y rustfmt
-      - name: Check vpn-types subcrate
+      - name: Check vpn-types subcrate formatting
         run: rustfmt --edition 2021 --check $GITHUB_WORKSPACE/types/src/lib.rs
-      - name: Check vpn-operator subcrate
+      - name: Check vpn-operator subcrate formatting
         run: rustfmt --edition 2021 --check $GITHUB_WORKSPACE/operator/src/main.rs

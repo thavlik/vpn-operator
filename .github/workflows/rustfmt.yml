@@ -1,0 +1,9 @@
+name: Check formatting with rustfmt
+run-name: Ensure rustfmt check passes
+on: [push]
+jobs:
+  Check-Formatting:
+    runs-on: rust-latest
+    steps:
+      - run: rustup component add rustfmt
+      - run: rustfmt --edition 2021 --check operator/src/main.rs

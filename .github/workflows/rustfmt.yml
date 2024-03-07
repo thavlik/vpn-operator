@@ -7,6 +7,6 @@ jobs:
     steps:
       - run: sudo apt-get update && sudo apt-get install -y rustfmt
       - name: vpn-types subcrate
-        run: rustfmt --edition 2021 --check types/src/lib.rs
+        run: rustfmt --edition 2021 --check $GITHUB_WORKSPACE/types/src/lib.rs
       - name: vpn-operator subcrate
-        run: rustfmt --edition 2021 --check operator/src/main.rs
+        run: rustfmt --edition 2021 --check $GITHUB_WORKSPACE/operator/src/main.rs

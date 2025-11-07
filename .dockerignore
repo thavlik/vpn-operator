@@ -1,0 +1,12 @@
+/chart
+/crds
+/secrets
+/scripts
+target/
+.idea/
+.vscode/
+.gitignore
+.dockerignore
+kb.yaml
+LICENSE*
+README*

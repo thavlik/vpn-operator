@@ -1,0 +1,70 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: masks.vpn.beebs.dev
+spec:
+  group: vpn.beebs.dev
+  names:
+    categories: []
+    kind: Mask
+    plural: masks
+    shortNames: []
+    singular: mask
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: PHASE
+      type: string
+    - jsonPath: .status.lastUpdated
+      name: AGE
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for MaskSpec via `CustomResource`
+        properties:
+          spec:
+            description: |-
+              [`MaskSpec`] describes the configuration for a [`Mask`] resource, which is the mechanism for reserving slots with [`MaskProvider`] resources. The controller will create a [`MaskConsumer`] resource for each [`Mask`] that will be updated when it is assigned a [`MaskProvider`] and deleted whenever the provider is unassigned. This way any resources that consume the credentials can be garbage collected by using the [`MaskConsumer`] as an owner reference.
+
+              Once a [`Mask`] is assigned a suitable provider through its [`MaskConsumer`], the controller copies the provider's credentials to a [`Secret`](k8s_openapi::api::core::v1::Secret) owned by the [`MaskConsumer`] and references it as [`AssignedProvider::secret`] within [`MaskConsumerStatus::provider`]. The credentials are then ready to be used be a container, or however your application uses them.
+            properties:
+              providers:
+                description: Optional list of providers to use at the exclusion of others. Omit if you are okay with being assigned any [`MaskProvider`]. These values correspond to [`MaskProviderSpec::tags`], and only one of them has to match for the [`MaskProvider`] to be considered suitable.
+                items:
+                  type: string
+                nullable: true
+                type: array
+            type: object
+          status:
+            description: Status object for the [`Mask`] resource.
+            nullable: true
+            properties:
+              lastUpdated:
+                description: Timestamp of when the [`MaskStatus`] object was last updated.
+                nullable: true
+                type: string
+              message:
+                description: A human-readable message indicating details about why the [`Mask`] is in this phase.
+                nullable: true
+                type: string
+              phase:
+                description: A short description of the [`Mask`] resource's current state.
+                enum:
+                - Pending
+                - Waiting
+                - Active
+                - Terminating
+                - ErrNoProviders
+                nullable: true
+                type: string
+            type: object
+        required:
+        - spec
+        title: Mask
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

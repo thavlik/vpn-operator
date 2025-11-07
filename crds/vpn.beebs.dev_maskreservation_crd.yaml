@@ -1,0 +1,75 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: maskreservations.vpn.beebs.dev
+spec:
+  group: vpn.beebs.dev
+  names:
+    categories: []
+    kind: MaskReservation
+    plural: maskreservations
+    shortNames: []
+    singular: maskreservation
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: PHASE
+      type: string
+    - jsonPath: .status.lastUpdated
+      name: AGE
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for MaskReservationSpec via `CustomResource`
+        properties:
+          spec:
+            description: |-
+              [`MaskReservationSpec`] describes the configuration for a [`MaskReservation`] resource, which is used to garbage collect slots by deleting a corresponding [`MaskConsumer`] in the [`Mask`]'s namespace before removing the finalizer on this object.
+
+              Note: The [`MaskReservation`] resource is only for internal use by the controller, and should never be created or manipulated directly.
+            properties:
+              name:
+                description: Name of the [`MaskConsumer`] resource reserving the slot. If it does not exist, this [`MaskReservation`] will be deleted. The creation order is the [`MaskConsumer`] first, then this [`MaskReservation`], then update the status object of the [`Mask`] to point to the [`MaskConsumer`].
+                type: string
+              namespace:
+                description: Namespace of the [`MaskConsumer`] resource reserving the slot.
+                type: string
+              uid:
+                description: UID of the [`MaskConsumer`] resource reserving the slot.
+                type: string
+            required:
+            - name
+            - namespace
+            - uid
+            type: object
+          status:
+            description: Status object for the [`MaskReservation`] resource.
+            nullable: true
+            properties:
+              lastUpdated:
+                description: Timestamp of when the [`MaskReservationStatus`] object was last updated.
+                nullable: true
+                type: string
+              message:
+                description: A human-readable message indicating details about why the [`MaskReservation`] is in this phase.
+                nullable: true
+                type: string
+              phase:
+                description: A short description of the [`MaskReservation`] resource's current state.
+                enum:
+                - Pending
+                - Active
+                - Terminating
+                nullable: true
+                type: string
+            type: object
+        required:
+        - spec
+        title: MaskReservation
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

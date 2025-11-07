@@ -1,0 +1,44 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-operator
+  labels:
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+rules:
+  - apiGroups: [""]
+    resources:
+      - secrets
+      - pods
+    verbs:
+      - get
+      - create
+      - delete
+      - list
+      - watch
+  - apiGroups: ["vpn.beebs.dev"]
+    resources:
+      - maskconsumers
+      - maskconsumers/status
+      - maskreservations
+      - maskreservations/status
+      - maskproviders
+      - maskproviders/status
+      - masks
+      - masks/status
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups: ["vpn.beebs.dev"]
+    resources:
+      - maskconsumers
+      - maskconsumers/status
+      - maskreservations
+      - maskreservations/status
+      - masks
+      - masks/status
+    verbs:
+      - create
+      - delete
